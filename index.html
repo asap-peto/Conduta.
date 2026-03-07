@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conduta · O diagnóstico do dia</title>
+<meta name="description" content="Um caso clínico por dia. Quantas tentativas você precisa para chegar à conduta certa?">
+<meta property="og:title" content="Conduta · O diagnóstico do dia">
+<meta property="og:description" content="O jogo diário de diagnóstico médico brasileiro.">
+<meta name="theme-color" content="#3c183d">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #3c183d;
+  --bg2: #4a2050;
+  --bg3: #562560;
+  --lilac: #d2cbfe;
+  --lime: #cefc8a;
+  --forest: #022e21;
+  --white: #ffffff;
+  --muted: rgba(210,203,254,0.5);
+  --border: rgba(210,203,254,0.2);
+  --error: #ff6b6b;
+  --error-bg: rgba(255,107,107,0.12);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.logo-dot { color: var(--lime); font-size: 36px; line-height: 1; margin-bottom: 2px; }
+
+.header-btns { display: flex; gap: 6px; }
+
+.hbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--lilac);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+}
+.hbtn:hover { background: var(--bg3); border-color: var(--lilac); }
+
+/* ── DATE BAR ── */
+.datebar {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.datebar span { color: var(--lilac); }
+
+/* ── MAIN ── */
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+/* ── ATTEMPT DOTS ── */
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  transition: all 0.25s ease;
+}
+.dot.correct { background: var(--lime); border-color: var(--lime); }
+.dot.wrong { background: var(--error); border-color: var(--error); }
+.dot.current { border-color: var(--lilac); box-shadow: 0 0 0 3px rgba(210,203,254,0.15); }
+
+/* ── CASE CARD ── */
+.case-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  margin-bottom: 16px;
+}
+
+.case-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.case-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lime);
+}
+
+.clue-counter {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.case-text {
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.75;
+  color: rgba(255,255,255,0.9);
+}
+
+/* ── CLUE BOXES ── */
+.clue-box {
+  margin-top: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--lilac);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  animation: clueIn 0.35s ease;
+}
+
+@keyframes clueIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.clue-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lilac);
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.clue-text {
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── GUESSES ── */
+.guesses { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+.guess-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  animation: clueIn 0.25s ease;
+}
+
+.guess-row.wrong { background: var(--error-bg); border-color: rgba(255,107,107,0.3); }
+
+.guess-icon { font-size: 14px; flex-shrink: 0; }
+.guess-text { font-size: 14px; font-weight: 500; flex: 1; }
+.guess-row.wrong .guess-text { color: var(--error); }
+.guess-hint { font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* ── INPUT ── */
+.input-wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.diagnosis-input {
+  width: 100%;
+  padding: 14px 52px 14px 16px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--white);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.diagnosis-input::placeholder { color: var(--muted); }
+.diagnosis-input:focus { border-color: var(--lilac); }
+
+.diagnosis-input.shake {
+  animation: shake 0.35s ease;
+}
+
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.submit-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 50px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--lime);
+  border: none;
+  cursor: pointer;
+  color: var(--forest);
+  font-size: 18px;
+  font-weight: 700;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.submit-btn:hover { background: #d8ff96; }
+.submit-btn:disabled { background: var(--bg3); color: var(--muted); cursor: not-allowed; }
+
+/* ── AUTOCOMPLETE ── */
+.autocomplete {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg3);
+  border: 1px solid var(--lilac);
+  border-radius: var(--radius-sm);
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  display: none;
+}
+
+.ac-item {
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.sel { background: var(--bg2); color: var(--lime); }
+
+/* ── RESULT CARD ── */
+.result-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  margin-top: 20px;
+  display: none;
+  animation: resultIn 0.45s ease;
+}
+
+.result-card.show { display: block; }
+
+@keyframes resultIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 18px;
+}
+
+.result-badge.win { background: var(--lime); color: var(--forest); }
+.result-badge.lose { background: var(--error-bg); color: var(--error); border: 1px solid rgba(255,107,107,0.3); }
+
+.result-diagnosis {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 6px;
+  color: var(--white);
+}
+
+.result-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+.result-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 20px 0;
+}
+
+.result-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lime);
+  margin-bottom: 10px;
+}
+
+.result-body {
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.75;
+  color: rgba(255,255,255,0.8);
+  margin-bottom: 16px;
+}
+
+.result-refs {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* ── SHARE ── */
+.share-area { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+
+.share-preview {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.8);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+  letter-spacing: 0.01em;
+}
+
+.share-btns { display: flex; gap: 8px; }
+
+.share-btn {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.15s;
+}
+.share-btn:hover { opacity: 0.85; }
+.share-btn.whatsapp { background: #25D366; color: white; }
+.share-btn.telegram { background: #0088cc; color: white; }
+.share-btn.copy { background: var(--lime); color: var(--forest); }
+
+/* ── MODALS ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30,10,31,0.8);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.overlay.open { display: flex; }
+
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  animation: resultIn 0.25s ease;
+  position: relative;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 22px;
+  letter-spacing: -0.02em;
+  padding-right: 32px;
+}
+
+.modal-close {
+  position: absolute;
+  top: 22px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close:hover { color: var(--white); }
+
+/* STATS */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.stat-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.stat-val {
+  display: block;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--lime);
+  letter-spacing: -0.02em;
+}
+
+.stat-lbl {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.dist-num { color: var(--muted); width: 14px; text-align: right; font-weight: 600; }
+.dist-bar-wrap { flex: 1; background: var(--bg); border-radius: 3px; height: 22px; overflow: hidden; }
+.dist-bar { height: 100%; background: var(--bg3); border-radius: 3px; transition: width 0.6s ease; min-width: 22px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; }
+.dist-bar.active { background: var(--lime); }
+.dist-bar span { font-size: 11px; font-weight: 600; color: var(--forest); }
+
+/* HOW TO PLAY */
+.how-step {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.8);
+}
+.how-step:last-child { border-bottom: none; }
+.how-num { color: var(--lime); font-weight: 700; font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--white);
+  color: var(--bg);
+  padding: 10px 22px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 300;
+  transition: transform 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── DISCLAIMER ── */
+.disclaimer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(210,203,254,0.06);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+/* ── TAB NAV ── */
+.tab-nav {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 13px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  text-transform: uppercase;
+}
+
+.tab-btn:hover { color: var(--lilac); }
+.tab-btn.active { color: var(--lime); border-bottom-color: var(--lime); }
+
+/* ── ARCHIVE ── */
+#archive-view { display: none; max-width: 640px; margin: 0 auto; padding: 24px 20px 80px; }
+#archive-view.show { display: block; }
+#game-view.hidden { display: none; }
+
+.archive-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lime);
+  margin-bottom: 16px;
+}
+
+.archive-list { display: flex; flex-direction: column; gap: 10px; }
+
+.archive-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-decoration: none;
+}
+
+.archive-item:hover { border-color: var(--lilac); background: var(--bg3); }
+
+.archive-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lime);
+  min-width: 44px;
+  letter-spacing: -0.02em;
+}
+
+.archive-info { flex: 1; }
+.archive-date { font-size: 12px; color: var(--muted); margin-bottom: 3px; font-weight: 500; }
+.archive-diag { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85); }
+.archive-cat { font-size: 11px; color: var(--lilac); opacity: 0.7; margin-top: 2px; }
+
+.archive-status {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.archive-diff {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.archive-diff.easy { background: rgba(206,252,138,0.12); color: var(--lime); }
+.archive-diff.medium { background: rgba(210,203,254,0.12); color: var(--lilac); }
+.archive-diff.hard { background: rgba(255,107,107,0.12); color: var(--error); }
+
+/* Archive case modal */
+.archive-modal {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 150;
+  overflow-y: auto;
+  display: none;
+  animation: slideUp 0.3s ease;
+}
+.archive-modal.open { display: block; }
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.archive-modal-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px 80px;
+}
+
+.archive-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.back-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--lilac);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.back-btn:hover { background: var(--bg3); }
+
+.archive-modal-title { font-size: 15px; font-weight: 600; color: var(--white); }
+.archive-modal-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ── FOOTER ── */
+footer {
+  text-align: center;
+  padding: 28px 20px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.9;
+  border-top: 1px solid var(--border);
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 4px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 480px) {
+  .header-inner { padding: 0 16px; }
+  main { padding: 20px 16px 60px; }
+  .result-diagnosis { font-size: 24px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .share-btns { flex-direction: column; }
+  .modal { padding: 22px 18px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTM0NCIgem9vbUFuZFBhbj0ibWFnbmlmeSIgdmlld0JveD0iMCAwIDEwMDggMjg3Ljk5OTk4OSIgaGVpZ2h0PSIzODQiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIG1lZXQiIHZlcnNpb249IjEuMCI+PGRlZnM+PGcvPjxjbGlwUGF0aCBpZD0iMDU4YmJmOTBlNiI+PHBhdGggZD0iTSA1MzIgMjAgTCAxMDA4IDIwIEwgMTAwOCAyODggTCA1MzIgMjg4IFogTSA1MzIgMjAgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iYWFlOTU0YWIxZCI+PHBhdGggZD0iTSA1OTguNjY0MDYyIDEzMy4zOTA2MjUgTCA2MTkuNTMxMjUgMTMzLjM5MDYyNSBMIDYxOS41MzEyNSAxNDUuNzgxMjUgTCA1OTguNjY0MDYyIDE0NS43ODEyNSBaIE0gNTk4LjY2NDA2MiAxMzMuMzkwNjI1ICIgY2xpcC1ydWxlPSJub256ZXJvIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9IjRjMTg4NTYzMmMiPjxwYXRoIGQ9Ik0gNjA5LjEwMTU2MiAxMzMuMzkwNjI1IEMgNjAzLjM2MzI4MSAxMzMuMzkwNjI1IDU5OC43MTA5MzggMTM2LjE2NDA2MiA1OTguNzEwOTM4IDEzOS41ODU5MzggQyA1OTguNzEwOTM4IDE0My4wMDc4MTIgNjAzLjM2MzI4MSAxNDUuNzgxMjUgNjA5LjEwMTU2MiAxNDUuNzgxMjUgQyA2MTQuODM5ODQ0IDE0NS43ODEyNSA2MTkuNDkyMTg4IDE0My4wMDc4MTIgNjE5LjQ5MjE4OCAxMzkuNTg1OTM4IEMgNjE5LjQ5MjE4OCAxMzYuMTY0MDYyIDYxNC44Mzk4NDQgMTMzLjM5MDYyNSA2MDkuMTAxNTYyIDEzMy4zOTA2MjUgWiBNIDYwOS4xMDE1NjIgMTMzLjM5MDYyNSAiIGNsaXAtcnVsZT0ibm9uemVybyIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSIxMmEzM2IxZTFjIj48cGF0aCBkPSJNIDAuNjY0MDYyIDAuMzkwNjI1IEwgMjEuNTMxMjUgMC4zOTA2MjUgTCAyMS41MzEyNSAxMi43ODEyNSBMIDAuNjY0MDYyIDEyLjc4MTI1IFogTSAwLjY2NDA2MiAwLjM5MDYyNSAiIGNsaXAtcnVsZT0ibm9uemVybyIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSI5ZTlmNTA5YzI2Ij48cGF0aCBkPSJNIDExLjEwMTU2MiAwLjM5MDYyNSBDIDUuMzYzMjgxIDAuMzkwNjI1IDAuNzEwOTM4IDMuMTY0MDYyIDAuNzEwOTM4IDYuNTg1OTM4IEMgMC43MTA5MzggMTAuMDA3ODEyIDUuMzYzMjgxIDEyLjc4MTI1IDExLjEwMTU2MiAxMi43ODEyNSBDIDE2LjgzOTg0NCAxMi43ODEyNSAyMS40OTIxODggMTAuMDA3ODEyIDIxLjQ5MjE4OCA2LjU4NTkzOCBDIDIxLjQ5MjE4OCAzLjE2NDA2MiAxNi44Mzk4NDQgMC4zOTA2MjUgMTEuMTAxNTYyIDAuMzkwNjI1IFogTSAxMS4xMDE1NjIgMC4zOTA2MjUgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iMWVjNTNjMjIyZSI+PHJlY3QgeD0iMCIgd2lkdGg9IjIyIiB5PSIwIiBoZWlnaHQ9IjEzIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9ImY4MjExNGJkNGMiPjxwYXRoIGQ9Ik0gNTQ2IDAgTCA2ODEgMCBMIDY4MSAxNTQgTCA1NDYgMTU0IFogTSA1NDYgMCAiIGNsaXAtcnVsZT0ibm9uemVybyIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSIzYTM3ZTA5OWIzIj48cGF0aCBkPSJNIDYyMCAwIEwgNzUyIDAgTCA3NTIgMTU0IEwgNjIwIDE1NCBaIE0gNjIwIDAgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iOGMzYzA4MjNmYiI+PHBhdGggZD0iTSA2MTguMDExNzE5IDI2LjI1MzkwNiBMIDY0Mi40MTc5NjkgMjYuMjUzOTA2IEwgNjQyLjQxNzk2OSA0MS43MTg3NSBMIDYxOC4wMTE3MTkgNDEuNzE4NzUgWiBNIDYxOC4wMTE3MTkgMjYuMjUzOTA2ICIgY2xpcC1ydWxlPSJub256ZXJvIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9IjIwNzJlYTQ2MmIiPjxwYXRoIGQ9Ik0gNjMwLjIxMDkzOCAyNi4yNTM5MDYgQyA2MjMuNDcyNjU2IDI2LjI1MzkwNiA2MTguMDExNzE5IDI5LjcxNDg0NCA2MTguMDExNzE5IDMzLjk4ODI4MSBDIDYxOC4wMTE3MTkgMzguMjU3ODEyIDYyMy40NzI2NTYgNDEuNzE4NzUgNjMwLjIxMDkzOCA0MS43MTg3NSBDIDYzNi45NDkyMTkgNDEuNzE4NzUgNjQyLjQxMDE1NiAzOC4yNTc4MTIgNjQyLjQxMDE1NiAzMy45ODgyODEgQyA2NDIuNDEwMTU2IDI5LjcxNDg0NCA2MzYuOTQ5MjE5IDI2LjI1MzkwNiA2MzAuMjEwOTM4IDI2LjI1MzkwNiBaIE0gNjMwLjIxMDkzOCAyNi4yNTM5MDYgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iODU5YjE1ZjU4NCI+PHBhdGggZD0iTSAwLjAxMTcxODggMC4yNTM5MDYgTCAyNC40MTc5NjkgMC4yNTM5MDYgTCAyNC40MTc5NjkgMTUuNzE4NzUgTCAwLjAxMTcxODggMTUuNzE4NzUgWiBNIDAuMDExNzE4OCAwLjI1MzkwNiAiIGNsaXAtcnVsZT0ibm9uemVybyIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSJhZGFmNDEyZTI1Ij48cGF0aCBkPSJNIDEyLjIxMDkzOCAwLjI1MzkwNiBDIDUuNDcyNjU2IDAuMjUzOTA2IDAuMDExNzE4OCAzLjcxNDg0NCAwLjAxMTcxODggNy45ODgyODEgQyAwLjAxMTcxODggMTIuMjU3ODEyIDUuNDcyNjU2IDE1LjcxODc1IDEyLjIxMDkzOCAxNS43MTg3NSBDIDE4Ljk0OTIxOSAxNS43MTg3NSAyNC40MTAxNTYgMTIuMjU3ODEyIDI0LjQxMDE1NiA3Ljk4ODI4MSBDIDI0LjQxMDE1NiAzLjcxNDg0NCAxOC45NDkyMTkgMC4yNTM5MDYgMTIuMjEwOTM4IDAuMjUzOTA2IFogTSAxMi4yMTA5MzggMC4yNTM5MDYgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iMjJiMzZjZTMzNSI+PHJlY3QgeD0iMCIgd2lkdGg9IjI1IiB5PSIwIiBoZWlnaHQ9IjE2Ii8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9ImMyYTQwZmRlYTgiPjxyZWN0IHg9IjAiIHdpZHRoPSI4MyIgeT0iMCIgaGVpZ2h0PSIyODgiLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iZjc0ZGYwYzUxZCI+PHBhdGggZD0iTSA2NTguMzk0NTMxIDI2LjI1MzkwNiBMIDY4Mi44MDA3ODEgMjYuMjUzOTA2IEwgNjgyLjgwMDc4MSA0MS43MTg3NSBMIDY1OC4zOTQ1MzEgNDEuNzE4NzUgWiBNIDY1OC4zOTQ1MzEgMjYuMjUzOTA2ICIgY2xpcC1ydWxlPSJub256ZXJvIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9IjgxNGJiZTkzODAiPjxwYXRoIGQ9Ik0gNjcwLjU5Mzc1IDI2LjI1MzkwNiBDIDY2My44NTU0NjkgMjYuMjUzOTA2IDY1OC4zOTQ1MzEgMjkuNzE0ODQ0IDY1OC4zOTQ1MzEgMzMuOTg4MjgxIEMgNjU4LjM5NDUzMSAzOC4yNTc4MTIgNjYzLjg1NTQ2OSA0MS43MTg3NSA2NzAuNTkzNzUgNDEuNzE4NzUgQyA2NzcuMzMyMDMxIDQxLjcxODc1IDY4Mi43OTI5NjkgMzguMjU3ODEyIDY4Mi43OTI5NjkgMzMuOTg4MjgxIEMgNjgyLjc5Mjk2OSAyOS43MTQ4NDQgNjc3LjMzMjAzMSAyNi4yNTM5MDYgNjcwLjU5Mzc1IDI2LjI1MzkwNiBaIE0gNjcwLjU5Mzc1IDI2LjI1MzkwNiAiIGNsaXAtcnVsZT0ibm9uemVybyIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSI1MzZkMzQ5Yjc3Ij48cGF0aCBkPSJNIDAuMzk0NTMxIDAuMjUzOTA2IEwgMjQuODAwNzgxIDAuMjUzOTA2IEwgMjQuODAwNzgxIDE1LjcxODc1IEwgMC4zOTQ1MzEgMTUuNzE4NzUgWiBNIDAuMzk0NTMxIDAuMjUzOTA2ICIgY2xpcC1ydWxlPSJub256ZXJvIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9Ijk1Zjk2ZDNmZTAiPjxwYXRoIGQ9Ik0gMTIuNTkzNzUgMC4yNTM5MDYgQyA1Ljg1NTQ2OSAwLjI1MzkwNiAwLjM5NDUzMSAzLjcxNDg0NCAwLjM5NDUzMSA3Ljk4ODI4MSBDIDAuMzk0NTMxIDEyLjI1NzgxMiA1Ljg1NTQ2OSAxNS43MTg3NSAxMi41OTM3NSAxNS43MTg3NSBDIDE5LjMzMjAzMSAxNS43MTg3NSAyNC43OTI5NjkgMTIuMjU3ODEyIDI0Ljc5Mjk2OSA3Ljk4ODI4MSBDIDI0Ljc5Mjk2OSAzLjcxNDg0NCAxOS4zMzIwMzEgMC4yNTM5MDYgMTIuNTkzNzUgMC4yNTM5MDYgWiBNIDEyLjU5Mzc1IDAuMjUzOTA2ICIgY2xpcC1ydWxlPSJub256ZXJvIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9IjYyNjZjODY4NmQiPjxyZWN0IHg9IjAiIHdpZHRoPSIyNSIgeT0iMCIgaGVpZ2h0PSIxNiIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSI4ZTc4N2NkMDI3Ij48cmVjdCB4PSIwIiB3aWR0aD0iMTAwOCIgeT0iMCIgaGVpZ2h0PSIyODgiLz48L2NsaXBQYXRoPjwvZGVmcz48Zz48ZyBjbGlwLXBhdGg9InVybCgjOGU3ODdjZDAyNykiPjxnIGNsaXAtcGF0aD0idXJsKCMwNThiYmY5MGU2KSI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiIHRyYW5zZm9ybT0ibWF0cml4KDEuNDgwMDA3LCAwLCAwLCAxLjQ4MDAwNywgNjgxLjM4NzU2NSwgMTY1Ljg2OTI0KSIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIgZD0iTSA3LjA5OTI2OSA5LjUwMDI1OSBMIDguMzAwMTcyIDkuNTAwMjU5IEMgOC42MTk1MzIgOS41MDAyNTkgOC45MjMwNTcgOS42MjY5NDcgOS4xNDc0MDIgOS44NTEyOTIgQyA5LjM3NDM4NSAxMC4wNzU2MzYgOS41MDEwNzQgMTAuMzgxOCA5LjUwMTA3NCAxMC43MDExNjEgTCA5LjUwMTA3NCA0Mi44ODUzNDUgQyA5LjUwMTA3NCA1Ni4xNDAxNDEgMjAuMjQ1ODUxIDY2Ljg4NDkxOCAzMy41MDA2NDcgNjYuODg0OTE4IEwgMTcxLjcyMzE5MyA2Ni44ODQ5MTggQyAxODQuOTc3OTg5IDY2Ljg4NDkxOCAxOTUuNzIyNzY2IDU2LjE0MDE0MSAxOTUuNzIyNzY2IDQyLjg4NTM0NSBMIDE5NS43MjI3NjYgMjEuOTU3OTcxIEMgMTk1LjcyMjc2NiAxOC45NjQ5NTMgMTkzLjI5NDU2OCAxNi41MzY3NTUgMTkwLjMwMTU0OSAxNi41MzY3NTUgTCAxODQuODgwMzMzIDE2LjUzNjc1NSAiIHN0cm9rZT0iI2QyY2JmZSIgc3Ryb2tlLXdpZHRoPSIxOSIgc3Ryb2tlLW9wYWNpdHk9IjEiIHN0cm9rZS1taXRlcmxpbWl0PSI0Ii8+PC9nPjxnIGZpbGw9IiNkMmNiZmUiIGZpbGwtb3BhY2l0eT0iMSI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTcuMzU4MTc0LCAyMDUuOTk2MDMzKSI+PGc+PHBhdGggZD0iTSA5NS4wMTU2MjUgMi45Njg3NSBDIDc3LjU3ODEyNSAyLjk2ODc1IDYyLjYwMTU2MiAtMC43NzM0MzggNTAuMDkzNzUgLTguMjY1NjI1IEMgMzcuNTkzNzUgLTE1Ljc1MzkwNiAyNy45Njg3NSAtMjYuMjAzMTI1IDIxLjIxODc1IC0zOS42MDkzNzUgQyAxNC40NzY1NjIgLTUzLjAyMzQzOCAxMS4xMDkzNzUgLTY4LjUzNTE1NiAxMS4xMDkzNzUgLTg2LjE0MDYyNSBDIDExLjEwOTM3NSAtMTAzLjc0MjE4OCAxNC40NzY1NjIgLTExOS4yODkwNjIgMjEuMjE4NzUgLTEzMi43ODEyNSBDIDI3Ljk2ODc1IC0xNDYuMjgxMjUgMzcuNTkzNzUgLTE1Ni44MTI1IDUwLjA5Mzc1IC0xNjQuMzc1IEMgNjIuNjAxNTYyIC0xNzEuOTQ1MzEyIDc3LjU3ODEyNSAtMTc1LjczNDM3NSA5NS4wMTU2MjUgLTE3NS43MzQzNzUgQyAxMTUuNzUzOTA2IC0xNzUuNzM0Mzc1IDEzMi43NDIxODggLTE3MC41ODU5MzggMTQ1Ljk4NDM3NSAtMTYwLjI5Njg3NSBDIDE1OS4yMzQzNzUgLTE1MC4wMTU2MjUgMTY3LjUwMzkwNiAtMTM1LjU3ODEyNSAxNzAuNzk2ODc1IC0xMTYuOTg0Mzc1IEwgMTM2IC0xMTYuOTg0Mzc1IEMgMTMzLjg1MTU2MiAtMTI2LjM2NzE4OCAxMjkuMjg1MTU2IC0xMzMuNzM0Mzc1IDEyMi4yOTY4NzUgLTEzOS4wNzgxMjUgQyAxMTUuMzA0Njg4IC0xNDQuNDIxODc1IDEwNi4wNTA3ODEgLTE0Ny4wOTM3NSA5NC41MzEyNSAtMTQ3LjA5Mzc1IEMgNzguNTcwMzEyIC0xNDcuMDkzNzUgNjYuMDY2NDA2IC0xNDEuNjYwMTU2IDU3LjAxNTYyNSAtMTMwLjc5Njg3NSBDIDQ3Ljk2MDkzOCAtMTE5Ljk0MTQwNiA0My40Mzc1IC0xMDUuMDU0Njg4IDQzLjQzNzUgLTg2LjE0MDYyNSBDIDQzLjQzNzUgLTY3LjIxMDkzOCA0Ny45NjA5MzggLTUyLjM1OTM3NSA1Ny4wMTU2MjUgLTQxLjU3ODEyNSBDIDY2LjA2NjQwNiAtMzAuODA0Njg4IDc4LjU3MDMxMiAtMjUuNDIxODc1IDk0LjUzMTI1IC0yNS40MjE4NzUgQyAxMDYuMDUwNzgxIC0yNS40MjE4NzUgMTE1LjMwNDY4OCAtMjcuOTI5Njg4IDEyMi4yOTY4NzUgLTMyLjk1MzEyNSBDIDEyOS4yODUxNTYgLTM3Ljk3MjY1NiAxMzMuODUxNTYyIC00NC45MjU3ODEgMTM2IC01My44MTI1IEwgMTcwLjc5Njg3NSAtNTMuODEyNSBDIDE2Ny41MDM5MDYgLTM2LjAzOTA2MiAxNTkuMjM0Mzc1IC0yMi4xMzI4MTIgMTQ1Ljk4NDM3NSAtMTIuMDkzNzUgQyAxMzIuNzQyMTg4IC0yLjA1MDc4MSAxMTUuNzUzOTA2IDIuOTY4NzUgOTUuMDE1NjI1IDIuOTY4NzUgWiBNIDk1LjAxNTYyNSAyLjk2ODc1ICIvPjwvZz48L2c+PC9nPjxnIGZpbGw9IiNkMmNiZmUiIGZpbGwtb3BhY2l0eT0iMSI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTU5LjcxNzk2NSwgMjA1Ljk5NjAzMykiPjxnPjxwYXRoIGQ9Ik0gNzQuNzgxMjUgMi45Njg3NSBDIDYyLjkzNzUgMi45Njg3NSA1Mi4yODEyNSAwLjI1MzkwNiA0Mi44MTI1IC01LjE3MTg3NSBDIDMzLjM1MTU2MiAtMTAuNjA5Mzc1IDI1Ljg2NzE4OCAtMTguMTQwNjI1IDIwLjM1OTM3NSAtMjcuNzY1NjI1IEMgMTQuODQ3NjU2IC0zNy4zOTA2MjUgMTIuMDkzNzUgLTQ4LjUzNTE1NiAxMi4wOTM3NSAtNjEuMjAzMTI1IEMgMTIuMDkzNzUgLTczLjg3ODkwNiAxNC44OTA2MjUgLTg1LjAzMTI1IDIwLjQ4NDM3NSAtOTQuNjU2MjUgQyAyNi4wNzgxMjUgLTEwNC4yODEyNSAzMy42MDE1NjIgLTExMS44MDQ2ODggNDMuMDYyNSAtMTE3LjIzNDM3NSBDIDUyLjUzMTI1IC0xMjIuNjYwMTU2IDYzLjE4NzUgLTEyNS4zNzUgNzUuMDMxMjUgLTEyNS4zNzUgQyA4Ni43MTg3NSAtMTI1LjM3NSA5Ny4yODkwNjIgLTEyMi42NjAxNTYgMTA2Ljc1IC0xMTcuMjM0Mzc1IEMgMTE2LjIwNzAzMSAtMTExLjgwNDY4OCAxMjMuNjkxNDA2IC0xMDQuMjgxMjUgMTI5LjIwMzEyNSAtOTQuNjU2MjUgQyAxMzQuNzEwOTM4IC04NS4wMzEyNSAxMzcuNDY4NzUgLTczLjg3ODkwNiAxMzcuNDY4NzUgLTYxLjIwMzEyNSBDIDEzNy40Njg3NSAtNDguNTM1MTU2IDEzNC43MTA5MzggLTM3LjM5MDYyNSAxMjkuMjAzMTI1IC0yNy43NjU2MjUgQyAxMjMuNjkxNDA2IC0xOC4xNDA2MjUgMTE2LjE2NDA2MiAtMTAuNjA5Mzc1IDEwNi42MjUgLTUuMTcxODc1IEMgOTcuMDgyMDMxIDAuMjUzOTA2IDg2LjQ2ODc1IDIuOTY4NzUgNzQuNzgxMjUgMi45Njg3NSBaIE0gNzQuNzgxMjUgLTI0LjQzNzUgQyA4My4wMDc4MTIgLTI0LjQzNzUgOTAuMTY0MDYyIC0yNy41MTk1MzEgOTYuMjUgLTMzLjY4NzUgQyAxMDIuMzQzNzUgLTM5Ljg2MzI4MSAxMDUuMzkwNjI1IC00OS4wMzUxNTYgMTA1LjM5MDYyNSAtNjEuMjAzMTI1IEMgMTA1LjM5MDYyNSAtNzMuMzc4OTA2IDEwMi4zNDM3NSAtODIuNTUwNzgxIDk2LjI1IC04OC43MTg3NSBDIDkwLjE2NDA2MiAtOTQuODk0NTMxIDgzLjA5Mzc1IC05Ny45ODQzNzUgNzUuMDMxMjUgLTk3Ljk4NDM3NSBDIDY2LjYzMjgxMiAtOTcuOTg0Mzc1IDU5LjQyOTY4OCAtOTQuODk0NTMxIDUzLjQyMTg3NSAtODguNzE4NzUgQyA0Ny40MjE4NzUgLTgyLjU1MDc4MSA0NC40MjE4NzUgLTczLjM3ODkwNiA0NC40MjE4NzUgLTYxLjIwMzEyNSBDIDQ0LjQyMTg3NSAtNDkuMDM1MTU2IDQ3LjQyMTg3NSAtMzkuODYzMjgxIDUzLjQyMTg3NSAtMzMuNjg3NSBDIDU5LjQyOTY4OCAtMjcuNTE5NTMxIDY2LjU1MDc4MSAtMjQuNDM3NSA3NC43ODEyNSAtMjQuNDM3NSBaIE0gNzQuNzgxMjUgLTI0LjQzNzUgIi8+PC9nPjwvZz48L2c+PGcgZmlsbD0iI2QyY2JmZSIgZmlsbC1vcGFjaXR5PSIxIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyOTQuNDY0NDgzLCAyMDUuOTk2MDMzKSI+PGc+PHBhdGggZD0iTSAxNi4wNDY4NzUgMCBMIDE2LjA0Njg3NSAtMTIyLjQyMTg3NSBMIDQzLjkzNzUgLTEyMi40MjE4NzUgTCA0Ni40MDYyNSAtMTAxLjY4NzUgQyA1MC4xODc1IC0xMDguOTI1NzgxIDU1LjY1NjI1IC0xMTQuNjc5Njg4IDYyLjgxMjUgLTExOC45NTMxMjUgQyA2OS45Njg3NSAtMTIzLjIzNDM3NSA3OC4zOTg0MzggLTEyNS4zNzUgODguMTA5Mzc1IC0xMjUuMzc1IEMgMTAzLjI0MjE4OCAtMTI1LjM3NSAxMTUuMDA3ODEyIC0xMjAuNjAxNTYyIDEyMy40MDYyNSAtMTExLjA2MjUgQyAxMzEuODAwNzgxIC0xMDEuNTE5NTMxIDEzNiAtODcuNTM1MTU2IDEzNiAtNjkuMTA5Mzc1IEwgMTM2IDAgTCAxMDQuNDA2MjUgMCBMIDEwNC40MDYyNSAtNjYuMTQwNjI1IEMgMTA0LjQwNjI1IC03Ni42NzE4NzUgMTAyLjI2NTYyNSAtODQuNzM0Mzc1IDk3Ljk4NDM3NSAtOTAuMzI4MTI1IEMgOTMuNzAzMTI1IC05NS45MjE4NzUgODcuMDM5MDYyIC05OC43MTg3NSA3OCAtOTguNzE4NzUgQyA2OS4xMTMyODEgLTk4LjcxODc1IDYxLjgzMjAzMSAtOTUuNTkzNzUgNTYuMTU2MjUgLTg5LjM0Mzc1IEMgNTAuNDc2NTYyIC04My4wOTM3NSA0Ny42NDA2MjUgLTc0LjM3NSA0Ny42NDA2MjUgLTYzLjE4NzUgTCA0Ny42NDA2MjUgMCBaIE0gMTYuMDQ2ODc1IDAgIi8+PC9nPjwvZz48L2c+PGcgZmlsbD0iI2QyY2JmZSIgZmlsbC1vcGFjaXR5PSIxIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg0MjkuNzA0NTc4LCAyMDUuOTk2MDMzKSI+PGc+PHBhdGggZD0iTSA3Mi4zMTI1IDIuOTY4NzUgQyA2MC44MDA3ODEgMi45Njg3NSA1MC41MTk1MzEgMC4xNzE4NzUgNDEuNDY4NzUgLTUuNDIxODc1IEMgMzIuNDE0MDYyIC0xMS4wMjM0MzggMjUuMjUzOTA2IC0xOC42Nzk2ODggMTkuOTg0Mzc1IC0yOC4zOTA2MjUgQyAxNC43MjI2NTYgLTM4LjA5NzY1NiAxMi4wOTM3NSAtNDkuMTE3MTg4IDEyLjA5Mzc1IC02MS40NTMxMjUgQyAxMi4wOTM3NSAtNzMuNzk2ODc1IDE0LjcyMjY1NiAtODQuNzgxMjUgMTkuOTg0Mzc1IC05NC40MDYyNSBDIDI1LjI1MzkwNiAtMTA0LjAzMTI1IDMyLjQxNDA2MiAtMTExLjU5NzY1NiA0MS40Njg3NSAtMTE3LjEwOTM3NSBDIDUwLjUxOTUzMSAtMTIyLjYxNzE4OCA2MC44MDA3ODEgLTEyNS4zNzUgNzIuMzEyNSAtMTI1LjM3NSBDIDgxLjUzMTI1IC0xMjUuMzc1IDg5LjU5Mzc1IC0xMjMuNjQ0NTMxIDk2LjUgLTEyMC4xODc1IEMgMTAzLjQxNDA2MiAtMTE2LjczODI4MSAxMDkuMDA3ODEyIC0xMTEuODkwNjI1IDExMy4yODEyNSAtMTA1LjY0MDYyNSBMIDExMy4yODEyNSAtMTc3LjcwMzEyNSBMIDE0NC44NzUgLTE3Ny43MDMxMjUgTCAxNDQuODc1IDAgTCAxMTYuNzUgMCBMIDExMy4yODEyNSAtMTcuNTMxMjUgQyAxMDkuMzMyMDMxIC0xMi4wOTM3NSAxMDQuMTA5Mzc1IC03LjMxNjQwNiA5Ny42MDkzNzUgLTMuMjAzMTI1IEMgOTEuMTA5Mzc1IDAuOTEwMTU2IDgyLjY3NTc4MSAyLjk2ODc1IDcyLjMxMjUgMi45Njg3NSBaIE0gNzguOTg0Mzc1IC0yNC42ODc1IEMgODkuMTc5Njg4IC0yNC42ODc1IDk3LjUzMTI1IC0yOC4wOTc2NTYgMTA0LjAzMTI1IC0zNC45MjE4NzUgQyAxMTAuNTMxMjUgLTQxLjc1MzkwNiAxMTMuNzgxMjUgLTUwLjUxNTYyNSAxMTMuNzgxMjUgLTYxLjIwMzEyNSBDIDExMy43ODEyNSAtNzEuODk4NDM4IDExMC41MzEyNSAtODAuNjYwMTU2IDEwNC4wMzEyNSAtODcuNDg0Mzc1IEMgOTcuNTMxMjUgLTk0LjMxNjQwNiA4OS4xNzk2ODggLTk3LjczNDM3NSA3OC45ODQzNzUgLTk3LjczNDM3NSBDIDY4Ljk0MTQwNiAtOTcuNzM0Mzc1IDYwLjYyODkwNiAtOTQuMzU5Mzc1IDU0LjA0Njg3NSAtODcuNjA5Mzc1IEMgNDcuNDYwOTM4IC04MC44NjcxODggNDQuMTcxODc1IC03Mi4xNDg0MzggNDQuMTcxODc1IC02MS40NTMxMjUgQyA0NC4xNzE4NzUgLTUwLjc1MzkwNiA0Ny40NjA5MzggLTQxLjk1MzEyNSA1NC4wNDY4NzUgLTM1LjA0Njg3NSBDIDYwLjYyODkwNiAtMjguMTQwNjI1IDY4Ljk0MTQwNiAtMjQuNjg3NSA3OC45ODQzNzUgLTI0LjY4NzUgWiBNIDc4Ljk4NDM3NSAtMjQuNjg3NSAiLz48L2c+PC9nPjwvZz48ZyBmaWxsPSIjZDJjYmZlIiBmaWxsLW9wYWNpdHk9IjEiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDU3NS44MDM0OTEsIDIwNS45OTYwMzMpIj48Zz48cGF0aCBkPSJNIDYxLjk1MzEyNSAyLjk2ODc1IEMgNDYuNjQ4NDM4IDIuOTY4NzUgMzQuODQzNzUgLTEuODAwNzgxIDI2LjUzMTI1IC0xMS4zNDM3NSBDIDE4LjIxODc1IC0yMC44OTQ1MzEgMTQuMDYyNSAtMzQuODgyODEyIDE0LjA2MjUgLTUzLjMxMjUgTCAxNC4wNjI1IC0xMjIuNDIxODc1IEwgNDUuNDA2MjUgLTEyMi40MjE4NzUgTCA0NS40MDYyNSAtNTYuMjY1NjI1IEMgNDUuNDA2MjUgLTQ1Ljc0MjE4OCA0Ny41NDY4NzUgLTM3LjY3OTY4OCA1MS44MjgxMjUgLTMyLjA3ODEyNSBDIDU2LjEwOTM3NSAtMjYuNDg0Mzc1IDYyLjg1MTU2MiAtMjMuNjg3NSA3Mi4wNjI1IC0yMy42ODc1IEMgODAuNzg5MDYyIC0yMy42ODc1IDg3Ljk5MjE4OCAtMjYuODEyNSA5My42NzE4NzUgLTMzLjA2MjUgQyA5OS4zNDc2NTYgLTM5LjMyMDMxMiAxMDIuMTg3NSAtNDguMDQ2ODc1IDEwMi4xODc1IC01OS4yMzQzNzUgTCAxMDIuMTg3NSAtMTIyLjQyMTg3NSBMIDEzMy43NjU2MjUgLTEyMi40MjE4NzUgTCAxMzMuNzY1NjI1IDAgTCAxMDUuODc1IDAgTCAxMDMuNDIxODc1IC0yMC43MzQzNzUgQyA5OS42Mjg5MDYgLTEzLjQ5MjE4OCA5NC4xNTYyNSAtNy43MzQzNzUgODcgLTMuNDUzMTI1IEMgNzkuODQzNzUgMC44MjgxMjUgNzEuNDkyMTg4IDIuOTY4NzUgNjEuOTUzMTI1IDIuOTY4NzUgWiBNIDYxLjk1MzEyNSAyLjk2ODc1ICIvPjwvZz48L2c+PC9nPjxnIGZpbGw9IiNkMmNiZmUiIGZpbGwtb3BhY2l0eT0iMSI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNzExLjA0MzU4NiwgMjA1Ljk5NjAzMykiPjxnPjxwYXRoIGQ9Ik0gNzAuNTkzNzUgMCBDIDU3Ljc1NzgxMiAwIDQ3LjQ3MjY1NiAtMy4xMjUgMzkuNzM0Mzc1IC05LjM3NSBDIDMyLjAwMzkwNiAtMTUuNjI1IDI4LjE0MDYyNSAtMjYuNzM0Mzc1IDI4LjE0MDYyNSAtNDIuNzAzMTI1IEwgMjguMTQwNjI1IC05Ni4wMTU2MjUgTCA3LjE1NjI1IC05Ni4wMTU2MjUgTCA3LjE1NjI1IC0xMjIuNDIxODc1IEwgMjguMTQwNjI1IC0xMjIuNDIxODc1IEwgMzEuODQzNzUgLTE1NS4yNSBMIDU5LjczNDM3NSAtMTU1LjI1IEwgNTkuNzM0Mzc1IC0xMjIuNDIxODc1IEwgOTIuNzk2ODc1IC0xMjIuNDIxODc1IEwgOTIuNzk2ODc1IC05Ni4wMTU2MjUgTCA1OS43MzQzNzUgLTk2LjAxNTYyNSBMIDU5LjczNDM3NSAtNDIuNDUzMTI1IEMgNTkuNzM0Mzc1IC0zNi41MjM0MzggNjEuMDAzOTA2IC0zMi40NTMxMjUgNjMuNTQ2ODc1IC0zMC4yMzQzNzUgQyA2Ni4wOTc2NTYgLTI4LjAxNTYyNSA3MC41MDM5MDYgLTI2LjkwNjI1IDc2Ljc2NTYyNSAtMjYuOTA2MjUgTCA5Mi4wNjI1IC0yNi45MDYyNSBMIDkyLjA2MjUgMCBaIE0gNzAuNTkzNzUgMCAiLz48L2c+PC9nPjwvZz48ZyBmaWxsPSIjZDJjYmZlIiBmaWxsLW9wYWNpdHk9IjEiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDgwMC4xMzM3ODIsIDIwNS45OTYwMzMpIj48Zz48cGF0aCBkPSJNIDU4LjI1IDIuOTY4NzUgQyA0Ny43MTg3NSAyLjk2ODc1IDM5LjA3ODEyNSAxLjI4MTI1IDMyLjMyODEyNSAtMi4wOTM3NSBDIDI1LjU4NTkzOCAtNS40Njg3NSAyMC41NzAzMTIgLTkuOTUzMTI1IDE3LjI4MTI1IC0xNS41NDY4NzUgQyAxMy45ODgyODEgLTIxLjE0MDYyNSAxMi4zNDM3NSAtMjcuMzEyNSAxMi4zNDM3NSAtMzQuMDYyNSBDIDEyLjM0Mzc1IC00NS40MTQwNjIgMTYuNzg1MTU2IC01NC42Mjg5MDYgMjUuNjcxODc1IC02MS43MDMxMjUgQyAzNC41NTQ2ODggLTY4Ljc3MzQzOCA0Ny44ODI4MTIgLTcyLjMxMjUgNjUuNjU2MjUgLTcyLjMxMjUgTCA5Ni43NSAtNzIuMzEyNSBMIDk2Ljc1IC03NS4yODEyNSBDIDk2Ljc1IC04My42NjQwNjIgOTQuMzYzMjgxIC04OS44MzIwMzEgODkuNTkzNzUgLTkzLjc4MTI1IEMgODQuODIwMzEyIC05Ny43MzgyODEgNzguODk4NDM4IC05OS43MTg3NSA3MS44MjgxMjUgLTk5LjcxODc1IEMgNjUuNDEwMTU2IC05OS43MTg3NSA1OS44MTI1IC05OC4xOTE0MDYgNTUuMDMxMjUgLTk1LjE0MDYyNSBDIDUwLjI1NzgxMiAtOTIuMDk3NjU2IDQ3LjMwMDc4MSAtODcuNjEzMjgxIDQ2LjE1NjI1IC04MS42ODc1IEwgMTUuMjk2ODc1IC04MS42ODc1IEMgMTYuMTE3MTg4IC05MC41NzAzMTIgMTkuMTE3MTg4IC05OC4zMDQ2ODggMjQuMjk2ODc1IC0xMDQuODkwNjI1IEMgMjkuNDg0Mzc1IC0xMTEuNDcyNjU2IDM2LjE5MTQwNiAtMTE2LjUzMTI1IDQ0LjQyMTg3NSAtMTIwLjA2MjUgQyA1Mi42NDg0MzggLTEyMy42MDE1NjIgNjEuODYzMjgxIC0xMjUuMzc1IDcyLjA2MjUgLTEyNS4zNzUgQyA4OS41MDc4MTIgLTEyNS4zNzUgMTAzLjI1IC0xMjEuMDE1NjI1IDExMy4yODEyNSAtMTEyLjI5Njg3NSBDIDEyMy4zMjAzMTIgLTEwMy41NzgxMjUgMTI4LjM0Mzc1IC05MS4yMzgyODEgMTI4LjM0Mzc1IC03NS4yODEyNSBMIDEyOC4zNDM3NSAwIEwgMTAxLjQzNzUgMCBMIDk4LjQ4NDM3NSAtMTkuNzUgQyA5NC44NTkzNzUgLTEzLjE2NDA2MiA4OS43OTY4NzUgLTcuNzM0Mzc1IDgzLjI5Njg3NSAtMy40NTMxMjUgQyA3Ni43OTY4NzUgMC44MjgxMjUgNjguNDQ1MzEyIDIuOTY4NzUgNTguMjUgMi45Njg3NSBaIE0gNjUuNDA2MjUgLTIxLjcxODc1IEMgNzQuNDU3MDMxIC0yMS43MTg3NSA4MS40ODgyODEgLTI0LjY3NTc4MSA4Ni41IC0zMC41OTM3NSBDIDkxLjUxOTUzMSAtMzYuNTE5NTMxIDk0LjY5MTQwNiAtNDMuODQ3NjU2IDk2LjAxNTYyNSAtNTIuNTc4MTI1IEwgNjkuMTA5Mzc1IC01Mi41NzgxMjUgQyA2MC43MTA5MzggLTUyLjU3ODEyNSA1NC43MDMxMjUgLTUxLjA1MDc4MSA1MS4wNzgxMjUgLTQ4IEMgNDcuNDYwOTM4IC00NC45NTcwMzEgNDUuNjU2MjUgLTQxLjIxODc1IDQ1LjY1NjI1IC0zNi43ODEyNSBDIDQ1LjY1NjI1IC0zMi4wMDc4MTIgNDcuNDYwOTM4IC0yOC4zMDQ2ODggNTEuMDc4MTI1IC0yNS42NzE4NzUgQyA1NC43MDMxMjUgLTIzLjAzNTE1NiA1OS40NzY1NjIgLTIxLjcxODc1IDY1LjQwNjI1IC0yMS43MTg3NSBaIE0gNjUuNDA2MjUgLTIxLjcxODc1ICIvPjwvZz48L2c+PC9nPjxnIGNsaXAtcGF0aD0idXJsKCNhYWU5NTRhYjFkKSI+PGcgY2xpcC1wYXRoPSJ1cmwoIzRjMTg4NTYzMmMpIj48ZyB0cmFuc2Zvcm09Im1hdHJpeCgxLCAwLCAwLCAxLCA1OTgsIDEzMykiPjxnIGNsaXAtcGF0aD0idXJsKCMxZWM1M2MyMjJlKSI+PGcgY2xpcC1wYXRoPSJ1cmwoIzEyYTMzYjFlMWMpIj48ZyBjbGlwLXBhdGg9InVybCgjOWU5ZjUwOWMyNikiPjxwYXRoIGZpbGw9IiNkMmNiZmUiIGQ9Ik0gMC43MTA5MzggMC4zOTA2MjUgTCAyMS40ODA0NjkgMC4zOTA2MjUgTCAyMS40ODA0NjkgMTIuNzgxMjUgTCAwLjcxMDkzOCAxMi43ODEyNSBaIE0gMC43MTA5MzggMC4zOTA2MjUgIiBmaWxsLW9wYWNpdHk9IjEiIGZpbGwtcnVsZT0ibm9uemVybyIvPjwvZz48L2c+PC9nPjwvZz48L2c+PC9nPjxnIGNsaXAtcGF0aD0idXJsKCNmODIxMTRiZDRjKSI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiIHRyYW5zZm9ybT0ibWF0cml4KDEuNDgwMDA3LCAwLCAwLCAxLjQ4MDAwNywgNjAwLjA0NDE1NSwgMjguODA3MjQ5KSIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIgZD0iTSAzLjQ5ODk3MSA0NC45NDEwNTIgTCAzLjQ5ODk3MSA5LjIyMDE0NCBDIDMuNDk4OTcxIDcuNzAyNTIgNC4xMDMzODEgNi4yNDgyNDEgNS4xNzQ5NTYgNS4xNzQwMjcgQyA2LjI0OTE3IDQuMTAyNDUzIDcuNzAzNDQ5IDMuNTAwNjgyIDkuMjIxMDczIDMuNTAwNjgyIEwgMTQuOTQwNTM2IDMuNTAwNjgyICIgc3Ryb2tlPSIjZDJjYmZlIiBzdHJva2Utd2lkdGg9IjciIHN0cm9rZS1vcGFjaXR5PSIxIiBzdHJva2UtbWl0ZXJsaW1pdD0iNCIvPjwvZz48ZyBjbGlwLXBhdGg9InVybCgjM2EzN2UwOTliMykiPjxwYXRoIHN0cm9rZS1saW5lY2FwPSJidXR0IiB0cmFuc2Zvcm09Im1hdHJpeCgxLjQ4MDAwNywgMCwgMCwgMS40ODAwMDcsIDY3OC42MzQzMDksIDI4LjgwNzI0OSkiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiIGQ9Ik0gOS45NTk4ODEgNDQuOTQxMDUyIEwgOS45NTk4ODEgOC40ODExMjcgQyA5Ljk1OTg4MSA1LjczMDkyOSA3LjcyOTYzMyAzLjUwMDY4MiA0Ljk3OTQzNSAzLjUwMDY4MiBMIC0wLjAwMTAxMDk4IDMuNTAwNjgyICIgc3Ryb2tlPSIjZDJjYmZlIiBzdHJva2Utd2lkdGg9IjciIHN0cm9rZS1vcGFjaXR5PSIxIiBzdHJva2UtbWl0ZXJsaW1pdD0iNCIvPjwvZz48ZyBjbGlwLXBhdGg9InVybCgjOGMzYzA4MjNmYikiPjxnIGNsaXAtcGF0aD0idXJsKCMyMDcyZWE0NjJiKSI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMSwgMCwgMCwgMSwgNjE4LCAyNikiPjxnIGNsaXAtcGF0aD0idXJsKCMyMmIzNmNlMzM1KSI+PGcgY2xpcC1wYXRoPSJ1cmwoIzg1OWIxNWY1ODQpIj48ZyBjbGlwLXBhdGg9InVybCgjYWRhZjQxMmUyNSkiPjxwYXRoIGZpbGw9IiNkMmNiZmUiIGQ9Ik0gMC4wMTE3MTg4IDAuMjUzOTA2IEwgMjQuNDE3OTY5IDAuMjUzOTA2IEwgMjQuNDE3OTY5IDE1LjcxODc1IEwgMC4wMTE3MTg4IDE1LjcxODc1IFogTSAwLjAxMTcxODggMC4yNTM5MDYgIiBmaWxsLW9wYWNpdHk9IjEiIGZpbGwtcnVsZT0ibm9uemVybyIvPjwvZz48L2c+PC9nPjwvZz48L2c+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDEsIDAsIDAsIDEsIDkyMywgMCkiPjxnIGNsaXAtcGF0aD0idXJsKCNjMmE0MGZkZWE4KSI+PGcgZmlsbD0iI2NlZmM4YSIgZmlsbC1vcGFjaXR5PSIxIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjA0NDgwODEsIDIwNS42OTA0NDEpIj48Zz48cGF0aCBkPSJNIDQ4LjUzMTI1IDIuODI4MTI1IEMgMzkuMDkzNzUgMi44MjgxMjUgMzEuMzM1OTM4IC0wLjEzMjgxMiAyNS4yNjU2MjUgLTYuMDYyNSBDIDE5LjIwMzEyNSAtMTIgMTYuMTcxODc1IC0xOS4xNDQ1MzEgMTYuMTcxODc1IC0yNy41IEMgMTYuMTcxODc1IC0zNi4xMzI4MTIgMTkuMjAzMTI1IC00My40MTQwNjIgMjUuMjY1NjI1IC00OS4zNDM3NSBDIDMxLjMzNTkzOCAtNTUuMjgxMjUgMzkuMDkzNzUgLTU4LjI1IDQ4LjUzMTI1IC01OC4yNSBDIDU3Ljk2ODc1IC01OC4yNSA2NS43MTg3NSAtNTUuMjgxMjUgNzEuNzgxMjUgLTQ5LjM0Mzc1IEMgNzcuODUxNTYyIC00My40MTQwNjIgODAuODkwNjI1IC0zNi4xMzI4MTIgODAuODkwNjI1IC0yNy41IEMgODAuODkwNjI1IC0xOS4xNDQ1MzEgNzcuODUxNTYyIC0xMiA3MS43ODEyNSAtNi4wNjI1IEMgNjUuNzE4NzUgLTAuMTMyODEyIDU3Ljk2ODc1IDIuODI4MTI1IDQ4LjUzMTI1IDIuODI4MTI1IFogTSA0OC41MzEyNSAyLjgyODEyNSAiLz48L2c+PC9nPjwvZz48L2c+PC9nPjxnIGNsaXAtcGF0aD0idXJsKCNmNzRkZjBjNTFkKSI+PGcgY2xpcC1wYXRoPSJ1cmwoIzgxNGJiZTkzODApIj48ZyB0cmFuc2Zvcm09Im1hdHJpeCgxLCAwLCAwLCAxLCA2NTgsIDI2KSI+PGcgY2xpcC1wYXRoPSJ1cmwoIzYyNjZjODY4NmQpIj48ZyBjbGlwLXBhdGg9InVybCgjNTM2ZDM0OWI3NykiPjxnIGNsaXAtcGF0aD0idXJsKCM5NWY5NmQzZmUwKSI+PHBhdGggZmlsbD0iI2QyY2JmZSIgZD0iTSAwLjM5NDUzMSAwLjI1MzkwNiBMIDI0LjgwMDc4MSAwLjI1MzkwNiBMIDI0LjgwMDc4MSAxNS43MTg3NSBMIDAuMzk0NTMxIDE1LjcxODc1IFogTSAwLjM5NDUzMSAwLjI1MzkwNiAiIGZpbGwtb3BhY2l0eT0iMSIgZmlsbC1ydWxlPSJub256ZXJvIi8+PC9nPjwvZz48L2c+PC9nPjwvZz48L2c+PC9nPjwvZz48L3N2Zz4=" alt="Conduta." style="height:44px;width:auto;display:block;">
+    </div>
+    <div class="header-btns">
+      <button class="hbtn" onclick="openModal('how')" title="Como jogar">?</button>
+      <button class="hbtn" onclick="openModal('stats')" title="Estatísticas">📊</button>
+      <button class="hbtn" onclick="switchTab('arquivo')" id="btn-arquivo" title="Arquivo de casos">📁</button>
+    </div>
+  </div>
+  <div class="datebar">
+    Caso <span id="case-num">#1</span> · <span id="today-date"></span>
+  </div>
+</header>
+
+<div id="game-view">
+<main>
+  <div class="dots" id="dots"></div>
+
+  <div class="case-card" id="case-card">
+    <div class="case-top">
+      <div class="case-tag">🩺 Caso clínico do dia</div>
+      <div class="clue-counter" id="clue-counter">Pista 1 de 5</div>
+    </div>
+    <div class="case-text" id="case-text"></div>
+    <div id="clues"></div>
+  </div>
+
+  <div class="guesses" id="guesses"></div>
+
+  <div class="input-wrap" id="input-wrap">
+    <input
+      type="text"
+      class="diagnosis-input"
+      id="diagnosis-input"
+      placeholder="Qual o diagnóstico?"
+      autocomplete="off"
+      spellcheck="false"
+    >
+    <button class="submit-btn" id="submit-btn" onclick="submit()">→</button>
+    <div class="autocomplete" id="autocomplete"></div>
+  </div>
+
+  <div class="result-card" id="result-card"></div>
+</main>
+</div><!-- #game-view -->
+
+<!-- ARCHIVE VIEW -->
+<div id="archive-view">
+  <div style="max-width:640px;margin:0 auto;padding:20px 20px 0;display:flex;align-items:center;gap:14px;margin-bottom:4px">
+    <button class="back-btn" onclick="switchTab('hoje')">← Hoje</button>
+    <div style="font-size:13px;font-weight:600;color:var(--lilac)">Casos anteriores</div>
+  </div>
+  <div style="max-width:640px;margin:0 auto;padding:16px 20px 80px">
+    <div class="archive-list" id="archive-list"></div>
+  </div>
+</div>
+
+<!-- ARCHIVE CASE MODAL -->
+<div class="archive-modal" id="archive-modal">
+  <div class="archive-modal-inner">
+    <div class="archive-modal-header">
+      <button class="back-btn" onclick="closeArchiveModal()">← Voltar</button>
+      <div>
+        <div class="archive-modal-title" id="am-title"></div>
+        <div class="archive-modal-sub" id="am-sub"></div>
+      </div>
+    </div>
+
+    <div class="dots" id="am-dots"></div>
+
+    <div class="case-card">
+      <div class="case-top">
+        <div class="case-tag">📁 Caso do Arquivo</div>
+        <div class="clue-counter" id="am-clue-counter">Pista 1 de 5</div>
+      </div>
+      <div class="case-text" id="am-case-text"></div>
+      <div id="am-clues"></div>
+    </div>
+
+    <div class="guesses" id="am-guesses"></div>
+
+    <div class="input-wrap" id="am-input-wrap">
+      <input type="text" class="diagnosis-input" id="am-input" placeholder="Qual o diagnóstico?" autocomplete="off" spellcheck="false">
+      <button class="submit-btn" id="am-submit-btn" onclick="amSubmit()">→</button>
+      <div class="autocomplete" id="am-autocomplete"></div>
+    </div>
+
+    <div class="result-card" id="am-result-card"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-how" onclick="closeOnBg(event,'how')">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('how')">✕</button>
+    <div class="modal-title">Como jogar</div>
+    <div class="how-step"><span class="how-num">1</span><span>Leia o caso clínico apresentado com os dados do paciente.</span></div>
+    <div class="how-step"><span class="how-num">2</span><span>Digite um diagnóstico no campo e pressione Enter ou →.</span></div>
+    <div class="how-step"><span class="how-num">3</span><span>Cada erro revela uma nova pista clínica — do geral ao específico.</span></div>
+    <div class="how-step"><span class="how-num">4</span><span>Você tem <strong style="color:var(--lime)">5 tentativas</strong>. Use cada pista com sabedoria.</span></div>
+    <div class="how-step"><span class="how-num">5</span><span>Ao terminar, veja a discussão clínica completa e compartilhe seu resultado.</span></div>
+    <div class="how-step"><span class="how-num">6</span><span>No <strong style="color:var(--lime)">Arquivo</strong>, acesse e jogue todos os casos anteriores.</span></div>
+    <div style="margin-top:20px;padding:14px 16px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--muted);line-height:1.7">
+      Casos baseados em diretrizes da SBC, SBP, CFM, Ministério da Saúde e literatura de alto impacto (NEJM, JAMA, Lancet). Um novo caso todo dia útil.
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-stats" onclick="closeOnBg(event,'stats')">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('stats')">✕</button>
+    <div class="modal-title">Estatísticas</div>
+    <div class="stats-grid">
+      <div class="stat-box"><span class="stat-val" id="s-played">0</span><span class="stat-lbl">Jogados</span></div>
+      <div class="stat-box"><span class="stat-val" id="s-wins">0</span><span class="stat-lbl">Acertos</span></div>
+      <div class="stat-box"><span class="stat-val" id="s-streak">0</span><span class="stat-lbl">Sequência</span></div>
+      <div class="stat-box"><span class="stat-val" id="s-best">0</span><span class="stat-lbl">Melhor</span></div>
+    </div>
+    <div style="margin-bottom:14px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--lime)">Tentativas para acertar</div>
+    <div id="dist-bars"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div style="text-align:center;padding:16px 20px;font-size:11px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);max-width:640px;margin:0 auto">
+  ⚠️ Apenas para fins educativos. Não substitui avaliação médica profissional. Casos baseados em diretrizes e literatura médica.
+</div>
+
+<footer>
+  Conduta · Medicina Brasileira · Fins Educativos<br>
+  Casos baseados em diretrizes SBC · SBP · CFM · Ministério da Saúde
+</footer>
+
+<script>
+const CASES = [
+  {id:1,diagnosis:"Dengue",aliases:["dengue clássica","febre do dengue","dengue com sinais de alarme"],cid:"A90",category:"Infectologia",
+  clues:[
+    "Mulher, 28 anos, previamente hígida, procura UBS referindo febre há 3 dias, cansaço intenso e dor de cabeça que piora ao movimentar os olhos. Não consegue trabalhar.",
+    "A febre atinge 39,5°C com pouca resposta a antitérmicos. Surgem dores musculares intensas e articulares difusas. Sem tosse, sem coriza, sem sintomas urinários.",
+    "Mora em Campinas-SP. Vizinhos com quadro semelhante nas últimas 2 semanas. Município em alerta epidemiológico. Não viajou recentemente. Sem histórico de doença prévia relevante.",
+    "Hemograma: leucócitos 3.200/mm³, plaquetas 98.000/mm³, hematócrito 38%. Exame físico revela rubor facial e exantema maculopapular em tronco. Prova do laço: positiva.",
+    "NS1 Ag positivo no 3º dia de doença. IgM anti-dengue reagente. PCR confirma sorotipo DENV-3 em circulação no município."
+  ],
+  clue_labels:["Apresentação inespecífica","Evolução dos sintomas","História epidemiológica","Exame físico e hemograma","Confirmação sorológica"],
+  explanation:"Dengue é arbovirose transmitida pelo Aedes aegypti. O quadro inicial é inespecífico — febre, mialgia e cefaleia — o que dificulta o diagnóstico precoce. A dor retro-orbital e o exantema aparecem depois. Leucopenia e trombocitopenia são marcadores laboratoriais característicos. A classificação de risco do MS orienta o manejo. Tratamento sintomático.",
+  reference:"Ministério da Saúde. Dengue: diagnóstico e manejo clínico. 5ª ed. 2016. PAHO/WHO Guidelines 2009.",difficulty:1},
+
+  {id:2,diagnosis:"Leptospirose",aliases:["doença de weil","febre dos arrozais"],cid:"A27",category:"Infectologia",
+  clues:[
+    "Homem, 34 anos, atendido no PS com febre, cefaleia intensa e mialgia há 5 dias, com piora progressiva. Está prostrado e mal consegue caminhar.",
+    "No 6º dia surgem icterícia leve e oligúria. Dor lombar bilateral. Paciente refere que a urina ficou escura. Febre persiste em 39,8°C.",
+    "Trabalha como gari em São Paulo. Há 8 dias, atuou na remoção de entulho após enchente, com contato direto com água de inundação por horas. Sem uso de EPI.",
+    "Creatinina 2,8 → 4,1 mg/dL em 24h. Bilirrubina total 4,2 mg/dL (direta). CPK 2.400 U/L. Plaquetas 68.000/mm³. Urina: cilindros granulosos, piúria. Rx tórax: infiltrado bilateral.",
+    "MAT (microaglutinação) reagente 1:400 para sorogrupo Icterohaemorrhagiae. Sufusão hemorrágica conjuntival ao exame — achado patognomônico. Hemocultura positiva em fase aguda."
+  ],
+  clue_labels:["Síndrome febril inespecífica","Evolução com disfunção orgânica","Exposição ocupacional","Imagem e laboratório","Sorologia confirmatória"],
+  explanation:"Leptospirose é zoonose endêmica no Brasil, especialmente em períodos chuvosos. A forma grave (Síndrome de Weil) cursa com insuficiência renal, icterícia e diátese hemorrágica. A sufusão conjuntival é achado patognomônico. Diagnóstico confirmado pela MAT. Tratamento: penicilina cristalina (grave) ou doxiciclina (leve).",
+  reference:"MS Brasil. Guia de Vigilância em Saúde: Leptospirose, 2017. Bharti AR et al. Lancet Infect Dis 2003.",difficulty:2},
+
+  {id:3,diagnosis:"Doença de Chagas",aliases:["tripanossomíase americana","chagas agudo","chagas"],cid:"B57",category:"Infectologia",
+  clues:[
+    "Criança, 6 anos, levada à UBS por febre persistente há 15 dias, cansaço fácil e inchaço ao redor do olho esquerdo. Mãe acha que foi picada de inseto.",
+    "O edema palpebral esquerdo é indolor, não pruriginoso, sem sinais de celulite. A febre é vespertina e irregular. A criança está cada vez mais prostrada.",
+    "Família mora no interior da Bahia, em casa de adobe. Há 3 semanas encontraram um inseto grande e achatado (barbeiro) no quarto. Sem histórico de doença prévia.",
+    "Ao exame: hepatoesplenomegalia, adenopatia generalizada, ECG com bloqueio de ramo direito de 1º grau. Esfregaço de sangue periférico: formas tripomastigotas visualizadas.",
+    "Sorologia: IgG e IgM por imunofluorescência indireta e ELISA ambos reagentes para Trypanosoma cruzi. Xenodiagnóstico positivo."
+  ],
+  clue_labels:["Febre e edema palpebral","Caracterização do edema","Histórico e exposição vetorial","Exame físico e parasitoscopia","Sorologia confirmatória"],
+  explanation:"Doença de Chagas aguda tem como marca o sinal de Romaña (edema bipalpebral unilateral indolor) quando a porta de entrada é conjuntival. É doença de notificação compulsória. O diagnóstico agudo é feito pelo encontro do parasita no sangue. Tratamento com benznidazol indicado na fase aguda.",
+  reference:"Rassi A Jr et al. Chagas disease. Lancet 2010. MS Brasil - Consensus on Chagas Disease. Rev Soc Bras Med Trop 2020.",difficulty:2},
+
+  {id:4,diagnosis:"Tuberculose Pulmonar",aliases:["tuberculose","tb pulmonar","tb"],cid:"A15",category:"Pneumologia / Infectologia",
+  clues:[
+    "Homem, 42 anos, procura UBS com tosse há 3 semanas. Refere que a tosse começou seca e agora é produtiva. Está muito cansado e sem apetite.",
+    "Perde peso sem fazer dieta — emagreceu 7 kg em 2 meses. Tosse noturna com sudorese que molha o lençol. Expectoração com estrias avermelhadas esporadicamente.",
+    "Etilista, mora em albergue no centro de São Paulo com 40 pessoas. Contato com colega de quarto que teve diagnóstico de TB há 4 meses e foi transferido para hospital.",
+    "Radiografia de tórax: infiltrado em lobo superior direito com área de cavitação. Adenopatia hilar discreta. PPD = 18 mm. BAAR em escarro: 2+ em 2 de 3 amostras.",
+    "Cultura em Löwenstein-Jensen: crescimento de Mycobacterium tuberculosis. Teste de sensibilidade: sensível a rifampicina, isoniazida, pirazinamida e etambutol."
+  ],
+  clue_labels:["Tosse inespecífica","Síndrome consuntiva","Histórico e contato","Imagem e baciloscopia","Cultura confirmatória"],
+  explanation:"Tuberculose pulmonar é a forma mais comum (85% dos casos). A tríade tosse > 3 semanas + sudorese noturna + emagrecimento deve sempre levantar suspeita. Cavitação em lobo superior é clássica. O diagnóstico definitivo é pela cultura. Tratamento: RHZE por 2 meses, depois RH por 4 meses. Notificação compulsória.",
+  reference:"MS Brasil - Manual de Recomendações para o Controle da Tuberculose, 2019. WHO Treatment Guidelines 2022.",difficulty:1},
+
+  {id:5,diagnosis:"Infarto Agudo do Miocárdio com Supra de ST",aliases:["iamcsst","iam com supra","infarto","iamcst"],cid:"I21",category:"Cardiologia",
+  clues:[
+    "Homem, 58 anos, acorda às 3h com desconforto no peito descrito como 'peso' e 'aperto'. Tomou omeprazol achando que era azia, mas a dor não passou.",
+    "Após 40 minutos a dor irradia para o braço esquerdo e mandíbula. Surge sudorese fria, palidez e náusea intensa. Chama o SAMU.",
+    "Hipertenso há 10 anos, diabético tipo 2, tabagista (30 maços-ano). Pai faleceu de infarto aos 55 anos. PA: 145/92 mmHg. FC: 102 bpm. SatO₂: 94%.",
+    "ECG imediato: supradesnivelamento de ST ≥ 2mm em V1–V4, com imagem em espelho em derivações inferiores. Bloqueio de ramo esquerdo novo. Troponina I ultrassensível: 8.200 pg/mL.",
+    "Cateterismo de urgência: oclusão total trombótica da artéria descendente anterior proximal. ICP primária com stent farmacológico. FEVE pós-procedimento: 42%."
+  ],
+  clue_labels:["Desconforto torácico noturno","Irradiação e sintomas vegetativos","Fatores de risco e vitais","ECG e biomarcadores","Cateterismo (diagnóstico definitivo)"],
+  explanation:"IAM com supra é emergência médica. O diagnóstico é eletrocardiográfico — supra de ST em derivações contíguas ou BRE novo. A reperfusão de escolha é ICP primária em até 90 min do primeiro contato médico (door-to-balloon). Anticoagulação e dupla antiagregação são pilares do tratamento.",
+  reference:"SBC - Diretriz de Síndromes Coronarianas Agudas, 2021. Ibanez B et al. ESC Guidelines 2017.",difficulty:1},
+
+  {id:6,diagnosis:"Acidente Vascular Cerebral Isquêmico",aliases:["avc isquêmico","avc","avci","isquemia cerebral"],cid:"I63",category:"Neurologia",
+  clues:[
+    "Mulher, 67 anos, é encontrada pelo marido pela manhã com dificuldade para falar e braço direito caído. Estava bem quando foram dormir às 23h.",
+    "A fala é incompreensível — não consegue nomear objetos nem repetir frases. O marido percebe que o canto direito da boca está caído. Chega ao PS às 8h20.",
+    "Histórico de fibrilação atrial diagnosticada há 2 anos, em uso irregular de warfarina ('tomo quando lembro'). Hipertensa. PA: 185/100 mmHg. Sem trauma recente.",
+    "TC de crânio sem contraste: sem hemorragia. Hipodensidade incipiente em território de ACM esquerda (sinal precoce). NIHSS = 14. INR colhido: 1,3.",
+    "Angiotomografia cerebral: oclusão de artéria cerebral média esquerda no segmento M1. Tempo porta-imagem: 28 min. Janela de 4h30 disponível. rt-PA administrado."
+  ],
+  clue_labels:["Déficit focal ao acordar","Caracterização do déficit","Histórico e anticoagulação","Neuroimagem e NIHSS","Angiotomografia (oclusão)"],
+  explanation:"AVC isquêmico é emergência tempo-dependente. O onset ao acordar dificulta o cálculo da janela — considera-se o último momento visto normal. A FA com anticoagulação inadequada é fator de risco maior. A trombólise IV deve ser feita em até 4h30 se critérios preenchidos. Trombectomia mecânica até 24h em casos selecionados.",
+  reference:"Pontes-Neto OM et al. Diretrizes Brasileiras de AVC. Arq Neuropsiquiatr 2009. Powers WJ et al. AHA/ASA 2019.",difficulty:2},
+
+  {id:7,diagnosis:"Meningite Bacteriana",aliases:["meningite meningocócica","meningite por pneumococo","meningite"],cid:"G00",category:"Neurologia / Infectologia",
+  clues:[
+    "Adolescente, 17 anos, é trazido pelos pais ao PS às 2h da manhã com febre e 'a pior dor de cabeça da vida'. Vômitou duas vezes no caminho.",
+    "Ao chegar: febre 40°C, fotofobia intensa, não consegue dobrar o pescoço. Está confuso e responde mal às perguntas. Glasgow 12.",
+    "Estudante do 2º ano do ensino médio. Dois colegas de turma tiveram febre e internaram na semana passada. Nenhum foi vacinado contra meningococo B.",
+    "Exame de pele: petéquias em pernas e tronco que aumentam de tamanho durante a avaliação. Punção lombar: LCR turvo, 2.400 células (98% neutrófilos), glicose 22 mg/dL, proteína 380 mg/dL.",
+    "Gram do LCR: diplococos gram-negativos intracelulares. Cultura: Neisseria meningitidis sorogrupo B. PCR positivo. Hemocultura também positiva."
+  ],
+  clue_labels:["Cefaleia e febre aguda","Sinais meníngeos","Contexto epidemiológico","Exantema e liquor","Microbiologia confirmatória"],
+  explanation:"Meningite meningocócica é emergência com risco de vida. A tríade febre + cefaleia + rigidez de nuca é clássica. A púrpura extensiva sugere meningococcemia com risco de choque. Penicilina cristalina deve ser iniciada imediatamente após a PL. Quimioprofilaxia dos contatos com rifampicina. Notificação imediata.",
+  reference:"MS Brasil - Protocolo de Tratamento da Doença Meningocócica, 2019. van de Beek D et al. NEJM 2006.",difficulty:1},
+
+  {id:8,diagnosis:"Apendicite Aguda",aliases:["apendicite","apendicite perfurada"],cid:"K35",category:"Cirurgia / Abdome Agudo",
+  clues:[
+    "Homem, 22 anos, procura UPA com dor abdominal que começou difusa há 18 horas. 'Parece cólica, mas não passa.' Sem diarreia, sem vômito até o momento.",
+    "Nas últimas 6 horas a dor migrou para o lado direito do abdome e ficou localizada. Qualquer movimento piora. Surgem náuseas e vômito bilioso. Temperatura 38,1°C.",
+    "Sem doenças prévias, sem cirurgias anteriores. Última refeição normal foi 24h atrás, mas perdeu o apetite. Nega ingesta de alimentos suspeitos.",
+    "Exame: ponto de McBurney positivo, sinal de Blumberg positivo, psoas positivo. Leucócitos 14.800/mm³ com bastões 12%. PCR 48 mg/L. Score de Alvarado: 9.",
+    "Ultrassonografia: apêndice com 12 mm de diâmetro, paredes espessadas, incompressível, com líquido livre periapendicular. TC confirmou sem perfuração."
+  ],
+  clue_labels:["Dor abdominal inespecífica","Migração e localização da dor","Histórico negativo relevante","Exame físico e laboratório","Imagem confirmatória"],
+  explanation:"Apendicite aguda é a causa mais comum de abdome agudo cirúrgico. A migração da dor periumbilical para FID em horas é clássica. O escore de Alvarado ≥ 7 tem alta sensibilidade. A ultrassonografia é o primeiro exame de imagem; TC para casos duvidosos. Tratamento: apendicectomia laparoscópica com antibioticoprofilaxia.",
+  reference:"Di Saverio S. WSES Guidelines 2020. Ferris M et al. Cochrane Review 2017.",difficulty:1},
+
+  {id:9,diagnosis:"Cetoacidose Diabética",aliases:["cad","cetoacidose","descompensação diabética"],cid:"E11.1",category:"Endocrinologia",
+  clues:[
+    "Mulher, 19 anos, é trazida ao PS pelo namorado em estado de confusão e dificuldade para responder. Estava bem ontem à noite mas acordou muito mal.",
+    "Ao exame: respiração rápida, profunda e ruidosa. Hálito com odor adocicado incomum. Mucosas secas, turgor cutâneo diminuído. PA 90/60 mmHg, FC 128 bpm, FR 32 irpm.",
+    "Diabética tipo 1 desde os 12 anos. Namorado conta que ela ficou sem insulina por 3 dias por dificuldades financeiras. Não usou análogos alternativos.",
+    "Glicemia: 487 mg/dL. Gasometria: pH 7,12, HCO₃ 8 mEq/L, pCO₂ 22 mmHg. Ânion gap: 24. Cetonúria 3+ na fita. Potássio sérico: 5,8 mEq/L.",
+    "Cetonemia (beta-hidroxibutirato): 6,2 mmol/L. Diagnóstico de CAD grave confirmado pelos três critérios: hiperglicemia + acidose metabólica + cetonemia."
+  ],
+  clue_labels:["Rebaixamento de consciência","Respiração e exame físico","Histórico de omissão de insulina","Gasometria e glicemia","Cetonemia confirmatória"],
+  explanation:"CAD é complicação aguda grave do DM tipo 1. A respiração de Kussmaul é compensação respiratória da acidose metabólica. Tríade: hiperglicemia + acidose + cetonemia. Tratamento: hidratação EV vigorosa, insulina regular EV após K > 3,5, reposição de K e tratar causa precipitante.",
+  reference:"SBD - Diretrizes da Sociedade Brasileira de Diabetes 2022-2023. Kitabchi AE et al. Diabetes Care 2009.",difficulty:2},
+
+  {id:10,diagnosis:"Pré-eclâmpsia",aliases:["pre-eclampsia","préeclâmpsia","hipertensão na gravidez"],cid:"O14",category:"Ginecologia e Obstetrícia",
+  clues:[
+    "Gestante, 24 anos, primigesta, 34 semanas, comparece ao pré-natal com queixa de inchaço nas mãos e rosto que piorou muito nos últimos 5 dias.",
+    "Relata cefaleia occipital persistente 'como uma pressão na nuca' e episódios de 'luzes piscando' na visão. Pressão arterial: 158/102 mmHg em duas medições com 6h de intervalo.",
+    "Gestação sem intercorrências até a 30ª semana. Sem histórico de hipertensão prévia. Mãe teve pré-eclâmpsia. Ganho de 4 kg na última semana.",
+    "Proteinúria 24h: 780 mg. TGO/TGP 3x o limite. LDH 680 U/L. Plaquetas 98.000/mm³. Haptoglobina diminuída. Critérios de síndrome HELLP presentes.",
+    "Doppler obstétrico: índice de resistência elevado em artérias uterinas e umbilicais. Crescimento fetal abaixo do percentil 10. Conduta: sulfato de magnésio e resolução da gestação."
+  ],
+  clue_labels:["Edema gestacional","Sintomas de alerta e PA","Histórico e fatores de risco","Laboratório (HELLP)","Doppler e conduta"],
+  explanation:"Pré-eclâmpsia é definida por PA ≥ 140/90 mmHg após 20 semanas + proteinúria ou disfunção de órgão-alvo. A HELLP é complicação grave. Sintomas como cefaleia e escotomas indicam eminência de eclâmpsia. Tratamento definitivo: parto. Sulfato de magnésio para profilaxia de convulsões.",
+  reference:"FEBRASGO - Pré-eclâmpsia. Diretrizes Clínicas 2018. ACOG Practice Bulletin 2020.",difficulty:2},
+
+  {id:11,diagnosis:"Pneumonia Comunitária",aliases:["pneumonia","pac","pneumonia adquirida na comunidade"],cid:"J18",category:"Pneumologia",
+  clues:[
+    "Homem, 55 anos, procura UPA com febre e tosse produtiva há 4 dias. Inicialmente achava que era gripe mas piorou, com dor no peito que piora ao respirar fundo.",
+    "Febre 38,8°C. Tosse com expectoração amarelo-esverdeada. Dispneia aos pequenos esforços desde ontem. Ausculta: crepitações em base direita com egofonia.",
+    "Diabético tipo 2 há 8 anos, tabagista (20 maços-ano). FR 26 irpm, SatO₂ 93% em ar ambiente, FC 110 bpm. Está confuso e desorientado no tempo.",
+    "Radiografia de tórax: consolidação lobar em lobo inferior direito com broncograma aéreo. Leucócitos 18.400/mm³ com desvio. PCR 148 mg/L. Ureia 52 mg/dL.",
+    "Score CURB-65 = 3 (confusão + ureia > 50 + FR ≥ 30). Antígeno urinário de Streptococcus pneumoniae: positivo. Hemocultura coletada antes dos antibióticos."
+  ],
+  clue_labels:["Tosse e febre","Achados pulmonares","Comorbidades e gravidade","Imagem e laboratório","Score e agente etiológico"],
+  explanation:"PAC é a 4ª causa de morte no Brasil. O CURB-65 estratifica a gravidade: ≥ 3 indica internação e possível UTI. O antígeno urinário de pneumococo é rápido e específico. Tratamento em internados: beta-lactâmico + macrolídeo. Iniciar antibiótico em até 4h do diagnóstico.",
+  reference:"SBPT - Diretrizes Brasileiras de Pneumonia, 2009. Mandell LA et al. Clin Infect Dis 2007.",difficulty:1},
+
+  {id:12,diagnosis:"Insuficiência Cardíaca Descompensada",aliases:["insuficiência cardíaca","ic descompensada","icc"],cid:"I50",category:"Cardiologia",
+  clues:[
+    "Homem, 72 anos, chega ao PS com falta de ar progressiva há 5 dias, piora ao deitar e inchaço nas pernas. Diz que 'o coração já era fraco antes'.",
+    "Ganhou 4 kg na última semana. Precisa de 3 travesseiros para dormir. Acorda sufocando à noite. Em uso de enalapril e furosemida — mas parou de pesar diariamente.",
+    "Histórico de doença de Chagas diagnosticada há 15 anos. Miocardiopatia dilatada chagásica conhecida. Ex-morador de zona rural no Nordeste. Nega etilismo.",
+    "Exame: B3 presente, crepitações bibasais, turgência jugular a 45°, hepatomegalia dolorosa, edema 3+ em MMII. Rx tórax: cardiomegalia, linhas B de Kerley, derrame pleural bilateral. BNP = 1.840 pg/mL.",
+    "Ecocardiograma: FEVE 28% (reduzida), dilatação de VE, insuficiência mitral funcional moderada, padrão diastólico restritivo — compatível com miocardiopatia dilatada avançada."
+  ],
+  clue_labels:["Dispneia progressiva","Retenção de fluidos","Histórico de cardiopatia chagásica","Exame físico e imagem","Ecocardiograma confirmatório"],
+  explanation:"IC com FE reduzida é síndrome frequente. A etiologia chagásica é prevalente no Norte e Nordeste brasileiro. BNP > 400 pg/mL confirma descompensação. Tratamento: furosemida EV, IECA/BRA, betabloqueador, ARM e SGLT2i conforme tolerância. Monitorar balanço hídrico.",
+  reference:"Rohde LE et al. Diretriz Brasileira de IC, 2018. McDonagh TA et al. ESC Guidelines 2021.",difficulty:2},
+
+  {id:13,diagnosis:"Tromboembolia Pulmonar",aliases:["tep","embolia pulmonar","tromboembolismo pulmonar"],cid:"I26",category:"Pneumologia / Cardiologia",
+  clues:[
+    "Mulher, 45 anos, chega ao PS com falta de ar súbita que iniciou há 2 horas enquanto assistia TV. Nega febre. Refere dor no lado direito do peito que piora ao respirar.",
+    "Tosse seca com escarros com sangue. SatO₂ 89% em ar ambiente. FC 118 bpm. Dor e inchaço em panturrilha esquerda há 3 dias, que ignorou.",
+    "Submetida a artroplastia total de quadril há 8 dias. Ficou 5 dias no leito hospitalar sem profilaxia anticoagulante adequada por 'contraindicação documentada'.",
+    "ECG: taquicardia sinusal, padrão S1Q3T3. Gasometria: PaO₂ 62 mmHg, hipocapnia. D-dímero > 4.000 ng/mL. Score de Wells: 7,5 (alta probabilidade). Eco: VD dilatado com McConnell positivo.",
+    "Angiotomografia de tórax: defeitos de enchimento em artéria pulmonar principal direita e ramos lobares bilaterais. Doppler de MMII: TVP em veia poplítea esquerda confirmada."
+  ],
+  clue_labels:["Dispneia súbita","Hemoptise e sinais clínicos","Fator de risco cirúrgico","ECG, gasometria e escores","Angiotomografia (padrão-ouro)"],
+  explanation:"TEP é emergência com mortalidade elevada se não tratada. A tríade clássica (dispneia + dor pleurítica + hemoptise) está presente em < 30% dos casos. O Wells estratifica probabilidade pré-teste. A angio-TC é o padrão-ouro. Tratamento: anticoagulação plena; trombólise em instabilidade hemodinâmica.",
+  reference:"SBC - Diretriz de Embolia Pulmonar, 2016. Konstantinides SV et al. ESC Guidelines 2019.",difficulty:2},
+
+  {id:14,diagnosis:"Malária por Plasmodium falciparum",aliases:["malária","malária falciparum","malária grave"],cid:"B50",category:"Infectologia",
+  clues:[
+    "Homem, 31 anos, dá entrada no PS com febre há 5 dias, calafrios, dor de cabeça intensa e vômitos repetidos. Está muito fraco e confuso.",
+    "A febre não segue padrão fixo — não é terçã nem quartã, é contínua e alta (40°C). Está com icterícia discreta. Baço palpável a 3 cm do rebordo costal.",
+    "Trabalhou em garimpo clandestino no interior do Pará nos últimos 2 meses. Retornou há 8 dias. Não realizou profilaxia antimalárica. Sem viagem internacional.",
+    "Glasgow 12. Urina com coloração escura ('coca-cola'). Glicemia 48 mg/dL. Plaquetas 28.000/mm³. Bilirrubinas elevadas. Esfregaço de sangue: parasitemia > 5%.",
+    "Teste rápido imunocromatográfico positivo para Plasmodium falciparum (HRP-2). PCR confirmatório positivo. Critérios OMS de malária grave presentes: malária cerebral + hipoglicemia + hiperparasitemia."
+  ],
+  clue_labels:["Síndrome febril inespecífica","Febre sem padrão e hepatoesplenomegalia","Exposição em área endêmica","Rebaixamento e hemoglobinúria","Teste rápido e PCR"],
+  explanation:"Malária por P. falciparum é a forma mais grave, podendo causar morte em horas. A urina escura ('coca-cola') indica hemoglobinúria por hemólise grave. Critérios de gravidade OMS: coma, hiperparasitemia, hipoglicemia, IRA, edema pulmonar. Tratamento: artesunato EV. Notificação compulsória.",
+  reference:"MS Brasil - Manual de Diagnóstico e Tratamento da Malária, 2020. WHO Guidelines, 3ª ed. 2015.",difficulty:3},
+
+  {id:15,diagnosis:"Leishmaniose Visceral",aliases:["calazar","kala-azar","leishmaniose"],cid:"B55.0",category:"Infectologia",
+  clues:[
+    "Criança, 3 anos, levada à UPA com febre há 45 dias e barriga crescendo progressivamente. A mãe acha que está com 'verme no fígado'.",
+    "A febre é irregular, às vezes sumia por dias e voltava. A criança está cada vez mais pálida, sem energia, e perdeu peso. Chora muito.",
+    "Mora em município do interior do Maranhão. Cão da família morreu há 2 meses com feridas na pele e emagrecimento. Área com casos conhecidos de 'barriga d'água'.",
+    "Exame físico: palidez 3+/4+, baço a 9 cm do RCE, fígado a 6 cm do RCD, adenopatia inguinal. Hemoglobina 5,8 g/dL, leucópenia, plaquetopenia. Albumina 2,2 g/dL. Hipergamaglobulinemia.",
+    "Teste rápido rK39: positivo. Pesquisa de Leishmania em medula óssea: formas amastigotas intracelulares identificadas. Diagnóstico parasitológico confirmado."
+  ],
+  clue_labels:["Febre prolongada e hepatomegalia","Evolução da síndrome","Exposição em área endêmica","Pancitopenia e hipoalbuminemia","Mielograma confirmatório"],
+  explanation:"Leishmaniose visceral (calazar) é endêmica no Nordeste. A tríade: febre prolongada + esplenomegalia + pancitopenia. O diagnóstico definitivo é parasitológico (aspirado de medula). O rK39 tem alta sensibilidade. Tratamento de 1ª linha: Anfotericina B lipossomal. Alta letalidade sem tratamento.",
+  reference:"MS Brasil - Manual de Vigilância e Controle da LV, 2014. Chappuis F et al. Nat Rev Microbiol 2007.",difficulty:2},
+
+  {id:16,diagnosis:"Hipotireoidismo Primário",aliases:["hipotireoidismo","tireoidite de hashimoto"],cid:"E03",category:"Endocrinologia",
+  clues:[
+    "Mulher, 38 anos, procura clínico geral com 'cansaço que não passa'. Há 8 meses acorda cansada, mesmo dormindo bem. Engordou 6 kg sem mudar a alimentação.",
+    "Cabelo caindo em mechas, pele cada vez mais seca e áspera ao toque. Intestino preso há meses — evacuava diariamente, agora a cada 3–4 dias. Ciclo menstrual irregular.",
+    "Sem doenças prévias. Mãe tem 'problema de tireoide'. Sensação constante de frio mesmo em ambiente quente. Raciocínio mais lento — sente que 'o pensamento trava'.",
+    "FC 54 bpm. Reflexos tendinosos com relaxamento lentificado. Pele fria e pastosa. Edema facial não compressível. TSH = 28,4 mUI/L. T4 livre = 0,52 ng/dL.",
+    "Anti-TPO: 1.200 U/mL (fortemente positivo). Ultrassonografia de tireoide: glândula hipotrófica, heterogênea, padrão pseudonodular difuso — compatível com tireoidite de Hashimoto."
+  ],
+  clue_labels:["Cansaço e ganho de peso","Sintomas sistêmicos","Histórico familiar e intolerância ao frio","Exame físico e TSH","Anti-TPO e imagem"],
+  explanation:"Hipotireoidismo é a disfunção endócrina mais prevalente, mais comum em mulheres. O TSH é o exame mais sensível para triagem. Anti-TPO elevado confirma etiologia autoimune (Hashimoto). Tratamento: levotiroxina oral, com ajuste de dose a cada 4–6 semanas pelo TSH.",
+  reference:"SBEM - Diretriz Brasileira para o Manejo do Hipotireoidismo, 2020. Jonklaas J et al. Thyroid 2014.",difficulty:1},
+
+  {id:17,diagnosis:"Chikungunya",aliases:["febre chikungunya","artralgias chikungunya"],cid:"A92.0",category:"Infectologia",
+  clues:[
+    "Mulher, 52 anos, procura UBS com febre alta de início abrupto há 3 dias. Diz que 'veio do nada'. Está muito fraca e mal consegue andar.",
+    "As articulações das mãos, punhos, tornozelos e pés estão dolorosas, com edema e rubor — bilateralmente. A dor é 10/10 e não cede com dipirona. Prefere ficar imóvel no leito.",
+    "Mora no Rio de Janeiro. Município em surto de arbovirose declarado há 3 semanas. Vizinha com quadro semelhante. Nega viagem.",
+    "Hemograma: leucopenia 2.800/mm³, linfocitose relativa. Plaquetas: 140.000/mm³ (não tão baixas quanto na dengue). Surgimento de exantema maculopapular no 3º dia, com áreas de pele poupada.",
+    "IgM anti-chikungunya: positivo. RT-PCR em fase aguda positivo para vírus chikungunya. Dengue e Zika descartados por sorologia e PCR."
+  ],
+  clue_labels:["Febre aguda com incapacidade","Artralgia intensa e simétrica","Contexto de surto","Hemograma e exantema","Sorologia e PCR confirmatório"],
+  explanation:"Chikungunya significa 'aquele que se dobra' — a artralgia é tão intensa que altera a postura. O diferencial com dengue é a poliartralgia incapacitante simétrica e as plaquetas menos afetadas. A forma crônica (artralgia > 3 meses) ocorre em 30–40%. Tratamento sintomático. Notificação compulsória.",
+  reference:"MS Brasil - Chikungunya: manejo clínico, 2017. Burt FJ et al. Lancet 2017.",difficulty:2},
+
+  {id:18,diagnosis:"Cirrose Hepática",aliases:["cirrose","cirrose descompensada","hepatopatia crônica"],cid:"K74",category:"Gastroenterologia",
+  clues:[
+    "Homem, 55 anos, admitido com barriga crescendo progressivamente há 3 semanas e amarelamento da pele. Está confuso e agitado à noite.",
+    "Familiares relatam que ele bebe cachaça diariamente há mais de 20 anos, pelo menos uma garrafa por dia. Nas últimas semanas parou de beber mas piorou.",
+    "Ao exame físico: eritema palmar, múltiplas telangiectasias em tórax, ginecomastia, circulação colateral abdominal visível ('cabeça de medusa'). Ascite volumosa com piparote positivo.",
+    "Flapping tremor presente. Desorientado no tempo. Albumina 2,0 g/dL. Bilirrubina total 8,2 mg/dL. INR 2,4. Sódio 128 mEq/L. Child-Pugh C. MELD-Na = 22.",
+    "Endoscopia: varizes esofágicas de grosso calibre com sinais de sangramento recente. Ultrassonografia: fígado nodular heterogêneo, esplenomegalia, hipertensão portal confirmada por Doppler."
+  ],
+  clue_labels:["Ascite e icterícia","Etiologia alcoólica","Estigmas hepáticos crônicos","Encefalopatia e scores de gravidade","Endoscopia e imagem"],
+  explanation:"Cirrose hepática alcóolica é causa frequente no Brasil. As complicações maiores: hemorragia varicosa, encefalopatia, PBE, síndrome hepatorrenal e CHC. O MELD-Na estratifica urgência no transplante. Transplante hepático é o tratamento definitivo em casos selecionados.",
+  reference:"SBH - Diretrizes Brasileiras de Cirrose Hepática, 2019. EASL Clinical Practice Guidelines 2018.",difficulty:2},
+
+  {id:19,diagnosis:"Pancreatite Aguda",aliases:["pancreatite","pancreatite grave"],cid:"K85",category:"Cirurgia / Gastroenterologia",
+  clues:[
+    "Mulher, 44 anos, obesa, chega ao PS com dor intensa em região do estômago que iniciou súbito há 6 horas após jantar farto. É a pior dor que já sentiu.",
+    "A dor se irradia 'em faixa' para o dorso e melhora um pouco quando ela se senta curvada para frente. Náuseas e vômitos que não aliviam a dor. Febre baixa: 37,8°C.",
+    "Histórico de cálculos na vesícula diagnosticados há 6 meses — estava aguardando cirurgia. Não bebe álcool. Sem medicamentos novos recentemente.",
+    "Amilase 1.840 U/L, lipase 2.200 U/L (> 3x o normal). Leucócitos 16.200/mm³. PCR 210 mg/L. Cálcio 7,8 mg/dL. Sinal de Cullen ausente mas Grey Turner discreto nos flancos.",
+    "TC de abdome com contraste (protocolo de pâncreas): necrose em corpo e cauda, coleção peripancreática. Score CTSI (Balthazar) = 7 — pancreatite grave. UTI indicada."
+  ],
+  clue_labels:["Dor epigástrica súbita intensa","Irradiação e posição de alívio","Histórico de litíase biliar","Amilase, lipase e sinais físicos","Tomografia de gravidade"],
+  explanation:"Pancreatite aguda: causas mais comuns são litíase biliar (60%) e álcool. Diagnóstico por 2 de 3 critérios: dor típica, enzimas > 3x, TC com achados. A lipase é mais específica que a amilase. O CTSI ≥ 7 indica necrose e alto risco. Tratamento: hidratação EV agressiva, analgesia, jejum.",
+  reference:"Tenner S et al. Am J Gastroenterol 2013. IAP/APA Evidence-based Guidelines 2013.",difficulty:2},
+
+  {id:20,diagnosis:"HIV / AIDS",aliases:["hiv","aids","síndrome da imunodeficiência adquirida","infecção por hiv"],cid:"B24",category:"Infectologia",
+  clues:[
+    "Homem, 32 anos, procura UBS com diarreia crônica há 2 meses, perda de peso importante e cansaço. 'Não tenho força para nada.'",
+    "Perdeu 12 kg em 3 meses sem fazer dieta. Suores noturnos abundantes há 6 semanas. Apareceram manchas brancas na língua que raspam mas voltam.",
+    "Relata relações sexuais sem preservativo com múltiplos parceiros. Não tem parceiro fixo. Nega uso de drogas injetáveis. Nunca testou para HIV.",
+    "Adenopatia cervical e inguinal bilateral. Radiografia de tórax: infiltrado intersticial bilateral difuso. SpO₂ 91% em repouso. LDH 820 U/L. Teste rápido para HIV: positivo em dois algoritmos diferentes.",
+    "Western Blot confirmatório: reagente. Carga viral HIV RNA: 480.000 cópias/mL. CD4: 78 células/mm³ (< 200 = AIDS). Lavado broncoalveolar: Pneumocystis jirovecii — pneumocistose confirmada."
+  ],
+  clue_labels:["Síndrome consuntiva","Candida oral e suores","Histórico comportamental","Achados radiológicos e teste rápido","CD4 e infecção oportunista"],
+  explanation:"HIV/AIDS com CD4 < 200 células/mm³ define AIDS. A PCP é a infecção oportunista mais comum nesse estágio. Diagnóstico de HIV por teste rápido em algoritmo duplo + confirmação por Western Blot. A TARV deve ser iniciada o mais cedo possível. Profilaxia primária com SMX-TMP quando CD4 < 200.",
+  reference:"MS Brasil - PCDT para Manejo da Infecção pelo HIV em Adultos, 2022. WHO Consolidated Guidelines 2021.",difficulty:2},
+
+  {id:21,diagnosis:"Febre Tifoide",aliases:["tifoide","febre entérica"],cid:"A01.0",category:"Infectologia",
+  clues:[
+    "Jovem de 19 anos, retornou há 10 dias de viagem a município rural no Nordeste. Febre há 8 dias que foi aumentando gradualmente — começou com 37,8°C e agora atinge 39,5°C.",
+    "Apesar da febre alta, o coração está lento (FC 64 bpm) — o médico estranha essa 'bradicardia relativa'. Diarreia com 4–5 episódios/dia na 1ª semana, substituída por constipação.",
+    "Bebeu água de poço e comeu alimentos de barraquinha durante a viagem. Não foi vacinado contra febre tifoide. Familiares em casa estão bem.",
+    "Exame físico: esplenomegalia palpável, manchas róseas no tronco (roséolas tíficas). Leucócitos 3.100/mm³ (leucopenia com eosinopenia). TGO/TGP levemente elevadas.",
+    "Hemocultura (coletada na 1ª semana): positiva para Salmonella enterica sorovar Typhi. Coprocultura também positiva. Widal com soroaglutininas O e H em títulos significativos."
+  ],
+  clue_labels:["Febre gradual pós-viagem","Dissociação pulso-temperatura","Exposição hídrica e alimentar","Roséolas tíficas e leucopenia","Hemocultura confirmatória"],
+  explanation:"Febre tifoide é causada por Salmonella Typhi — transmissão fecal-oral por água ou alimento contaminado. A dissociação pulso-temperatura (bradicardia relativa) é clássica. Roséolas tíficas são patognomônicas. A hemocultura na 1ª semana tem a maior sensibilidade. Tratamento: ciprofloxacino ou azitromicina.",
+  reference:"Bhutta ZA et al. Typhoid fever. N Engl J Med 2006. MS Brasil - Manual de Controle das DTAs.",difficulty:2},
+
+  {id:22,diagnosis:"Acidente Vascular Cerebral Hemorrágico",aliases:["avc hemorrágico","avch","hemorragia cerebral","hemorragia intraparenquimatosa"],cid:"I61",category:"Neurologia",
+  clues:[
+    "Homem, 61 anos, cai repentinamente em casa durante uma discussão acalorada. Esposa chama SAMU — ele está com braço e perna esquerdos sem movimento e não reconhece onde está.",
+    "Relata ter tido 'a pior dor de cabeça da vida' antes de cair. PA na chegada: 210/120 mmHg. Glasgow 10. Desvio do olhar conjugado para a direita.",
+    "Hipertenso há 15 anos, em uso irregular de losartana. Parou de medir a pressão há 6 meses. Nega anticoagulantes, nega trauma. Etilista social.",
+    "TC de crânio sem contraste: hiperdensidade espontânea em núcleo lentiforme direito, volume 35 mL. Sem hidrocefalia. NIHSS 18. Sem desvio de linha média.",
+    "Angiotomografia cerebral: sem malformação arteriovenosa ou aneurisma rotos. Sinal do ponto (spot sign) presente no hematoma — prediz expansão ativa e pior prognóstico."
+  ],
+  clue_labels:["Déficit focal súbito","Cefaleia e PA extrema","Histórico de HAS não controlada","Neuroimagem e NIHSS","Angiotomografia (spot sign)"],
+  explanation:"Hemorragia intraparenquimatosa representa 15–20% dos AVCs. A HAS não controlada é o principal fator de risco (localização clássica: núcleos da base). O controle pressórico imediato (< 140 mmHg) reduz expansão. O spot sign na angiotomografia prediz crescimento do hematoma e pior desfecho.",
+  reference:"AHA/ASA Guidelines for ICH 2022. Pontes-Neto OM. Arq Neuropsiquiatr 2009.",difficulty:3},
+
+  {id:23,diagnosis:"Síndrome de Burnout",aliases:["burnout","esgotamento profissional"],cid:"Z73.0",category:"Saúde Mental / Medicina do Trabalho",
+  clues:[
+    "Médico residente de 2º ano, 27 anos, procura psiquiatra com 'cansaço que não passa'. Há 4 meses acorda exausto, mesmo nos dias de folga. Insônia de manutenção.",
+    "Dificuldade de concentração crescente. Choro sem motivo aparente. Sente que 'não se importa mais com os pacientes' — algo que o perturba profundamente.",
+    "Faz 3 plantões de 24h por semana além das atividades ambulatoriais. Sente que o trabalho 'não faz diferença'. Recentemente cometeu erro de prescrição — nunca havia acontecido.",
+    "Questionário de Maslach (MBI): escore 48/54 em Exaustão Emocional (muito alto), 22/30 em Despersonalização (alto), 12/48 em Realização Pessoal (muito baixo). Sem episódio depressivo maior anterior.",
+    "Avaliação psiquiátrica: ausência de transtorno depressivo maior, bipolar ou ansioso — os sintomas estão estritamente vinculados ao contexto ocupacional. CID-11 Z73.0: Síndrome de Burnout — fenômeno ocupacional."
+  ],
+  clue_labels:["Exaustão persistente","Despersonalização","Carga de trabalho e impacto funcional","Escala de Maslach (MBI)","Diagnóstico diferencial e CID-11"],
+  explanation:"Burnout tem prevalência de 30–50% entre médicos residentes no Brasil. A CID-11 (2019) classificou como fenômeno ocupacional — não é transtorno mental, mas requer intervenção. O MBI avalia 3 dimensões: exaustão, despersonalização e realização pessoal. Tratamento: redução de carga, psicoterapia, suporte institucional.",
+  reference:"CFM - Resolução 2.232/2019. WHO CID-11. West CP et al. JAMA 2018.",difficulty:3},
+
+  {id:24,diagnosis:"Síndrome Coronariana Aguda sem Supra de ST",aliases:["scassst","angina instável","iam sem supra","iamssst"],cid:"I21.4",category:"Cardiologia",
+  clues:[
+    "Mulher, 62 anos, procura PS com 'aperto no peito' que ocorreu 3 vezes nas últimas 24h, durando 15–20 minutos cada episódio. Entre os episódios se sente bem.",
+    "A dor aparece em repouso, sem esforço precipitante. Cede espontaneamente. Associada à falta de ar. Nega febre, nega tosse. PA: 150/90 mmHg. FC: 88 bpm. Ausculta normal.",
+    "Hipertensa há 10 anos, dislipidêmica em uso de sinvastatina. Menopausada. Mãe faleceu de infarto aos 68 anos. Nega tabagismo. Sedentária.",
+    "ECG: infradesnivelamento de ST de 1,5 mm em V4–V6 que retorna ao normal entre os episódios. Troponina T ultrassensível admissão: 52 ng/L; 3h depois: 128 ng/L (delta positivo). Score GRACE: 142.",
+    "Coronariografia: lesão obstrutiva de 85% em artéria circunflexa proximal — culprit lesion identificada. ICP com stent farmacológico. Ecocardiograma pós: FEVE 58%, sem alterações segmentares."
+  ],
+  clue_labels:["Dor torácica episódica em repouso","Características da dor","Fatores de risco cardiovascular","ECG e troponina seriada","Coronariografia confirmatória"],
+  explanation:"SCA sem supra engloba angina instável (sem elevação de troponina) e IAM sem supra (troponina elevada). O delta de troponina confirma lesão miocárdica. Score GRACE > 140 = alto risco: coronariografia em < 24h. Tratamento: dupla antiagregação + anticoagulação + estatina de alta intensidade.",
+  reference:"SBC - Diretriz de SCA sem Supra de ST, 2021. Collet JP et al. ESC Guidelines 2020.",difficulty:3},
+
+  {id:25,diagnosis:"Hipertensão Arterial Sistêmica",aliases:["has","hipertensão arterial","hipertensão","pressão alta"],cid:"I10",category:"Cardiologia",
+  clues:[
+    "Mulher, 48 anos, vai ao médico para check-up anual. Não tem queixas. A pressão medida na consulta é 158/98 mmHg — técnica correta, após 5 min de repouso.",
+    "Médico repete a medição antes de sair: 155/96 mmHg. Há 3 meses, em outra consulta, foi registrada 152/94 mmHg. A paciente dizia que 'pressão alta é coisa de velho'.",
+    "Sedentária, IMC 32 kg/m², tabagista (10 cigarros/dia há 15 anos). Pai faleceu de IAM aos 55 anos. Mãe hipertensa. Ingere sal em excesso. Bebe álcool socialmente.",
+    "ECG: índice de Sokolow-Lyon > 35 mm (sobrecarga ventricular esquerda). Ecocardiograma: hipertrofia concêntrica de VE (espessura de parede posterior 12 mm). Fundo de olho: cruzamentos AV grau II.",
+    "Laboratório: microalbuminúria positiva (68 mg/g de creatinina), creatinina 0,9 mg/dL, glicemia 108 mg/dL, colesterol total 218 mg/dL. Lesão de órgão-alvo em 3 sítios: coração, olho e rim."
+  ],
+  clue_labels:["PA elevada assintomática","Confirmação da elevação","Fatores de risco múltiplos","Lesão cardíaca e ocular","Microalbuminúria renal"],
+  explanation:"HAS afeta 36% dos adultos brasileiros e é a principal causa de morte cardiovascular. O diagnóstico requer 2 medidas elevadas em 2 ocasiões. A presença de lesão de órgão-alvo (coração, rim, olho) classifica como risco cardiovascular alto. Tratamento: mudança de estilo de vida + farmacoterapia (tiazídico, IECA/BRA, BCC).",
+  reference:"SBC - 7ª Diretriz Brasileira de HAS, 2016. SBH/SBC - Diretriz Brasileira de HAS, 2020.",difficulty:1}
+];
+
+const ALL_DIAGNOSES = [
+  "Dengue","Leptospirose","Doença de Chagas","Tuberculose Pulmonar","Infarto Agudo do Miocárdio com Supra de ST",
+  "Acidente Vascular Cerebral Isquêmico","Meningite Bacteriana","Apendicite Aguda","Cetoacidose Diabética",
+  "Pré-eclâmpsia","Pneumonia Comunitária","Insuficiência Cardíaca Descompensada","Tromboembolia Pulmonar",
+  "Malária por Plasmodium falciparum","Leishmaniose Visceral","Hipotireoidismo Primário","Chikungunya",
+  "Cirrose Hepática","Pancreatite Aguda","HIV / AIDS","Febre Tifoide","Acidente Vascular Cerebral Hemorrágico",
+  "Síndrome de Burnout","Síndrome Coronariana Aguda sem Supra de ST","Hipertensão Arterial Sistêmica",
+  "Angina Estável","Miocardite","Pericardite","Dissecção Aórtica","Hemorragia Subaracnóidea",
+  "Epilepsia","Esclerose Múltipla","Pneumotórax","Derrame Pleural","DPOC Agudizado","Asma Aguda",
+  "Hepatite A","Hepatite B","Hepatite C","Colangite","Úlcera Péptica","Doença de Crohn",
+  "Retocolite Ulcerativa","Insuficiência Renal Aguda","Pielonefrite","Cólica Renal","Eclâmpsia",
+  "Gravidez Ectópica","Sepse","Choque Séptico","Hipoglicemia","Estado Hiperglicêmico Hiperosmolar",
+  "Paracoccidioidomicose","Histoplasmose","Febre Amarela","Zika","Anemia Falciforme",
+  "Leucemia","Lúpus Eritematoso Sistêmico","Artrite Reumatoide","Fibromialgia","Depressão",
+  "Transtorno Bipolar","Esquizofrenia","Câncer de Pulmão","Câncer Gástrico","Melanoma",
+  "Tétano","Raiva","Hantavirose","Síndrome Nefrótica","Glomerulonefrite","Oclusão Intestinal",
+  "Síndrome de Cushing","Insuficiência Adrenal","Feocromocitoma","Hipercalcemia","Hiponatremia",
+  "Rabdomiólise","Endocardite Infecciosa","Miocardiopatia Hipertrófica","Estenose Aórtica",
+  "Mononucleose Infecciosa","Toxoplasmose","Candidemia","Leishmaniose Tegumentar"
+];
+
+// ── STATE ──────────────────────────────────────────────────────
+const MAX = 5;
+let gs = { idx:0, attempts:0, guesses:[], won:false, done:false };
+let stats = { played:0, wins:0, streak:0, best:0, dist:{1:0,2:0,3:0,4:0,5:0,0:0} };
+let acSel = -1;
+
+function dayKey() { return new Date().toISOString().split('T')[0]; }
+
+function globalDay(date) {
+  const d0 = new Date('2026-01-01');
+  return Math.floor((date - d0) / 86400000);
+}
+
+function dayIdx() {
+  return globalDay(new Date()) % CASES.length;
+}
+
+function dateFromGlobalDay(n) {
+  const d = new Date('2025-01-01');
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function keyFromDate(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function load() {
+  try {
+    const s = localStorage.getItem('conduta_stats');
+    if (s) stats = JSON.parse(s);
+    const g = localStorage.getItem('conduta_game_' + dayKey());
+    if (g) gs = JSON.parse(g);
+  } catch(e) {}
+}
+
+function save() {
+  try {
+    localStorage.setItem('conduta_stats', JSON.stringify(stats));
+    localStorage.setItem('conduta_game_' + dayKey(), JSON.stringify(gs));
+  } catch(e) {}
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+function init() {
+  load();
+  gs.idx = dayIdx();
+  const gDay = globalDay(new Date());
+
+  const c = CASES[gs.idx];
+  document.getElementById('case-num').textContent = '#' + (gDay + 1);
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('pt-BR', {
+    weekday:'long', day:'numeric', month:'long', year:'numeric'
+  });
+
+  renderDots();
+  renderCase();
+  renderGuesses();
+
+  if (gs.done) {
+    renderResult();
+    document.getElementById('input-wrap').style.display = 'none';
+  }
+
+  const inp = document.getElementById('diagnosis-input');
+  inp.addEventListener('input', onInput);
+  inp.addEventListener('keydown', onKey);
+}
+
+// ── RENDER ────────────────────────────────────────────────────
+function renderDots() {
+  const el = document.getElementById('dots');
+  el.innerHTML = '';
+  for (let i = 0; i < MAX; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    if (i < gs.attempts) {
+      d.classList.add(gs.guesses[i]?.correct ? 'correct' : 'wrong');
+    } else if (i === gs.attempts && !gs.done) {
+      d.classList.add('current');
+    }
+    el.appendChild(d);
+  }
+}
+
+function renderCase() {
+  const c = CASES[gs.idx];
+  document.getElementById('case-text').textContent = c.clues[0];
+  document.getElementById('clue-counter').textContent = `Pista ${Math.min(gs.attempts + 1, MAX)} de ${MAX}`;
+
+  const cl = document.getElementById('clues');
+  cl.innerHTML = '';
+  for (let i = 1; i <= Math.min(gs.attempts, MAX - 1); i++) {
+    if (!c.clues[i]) continue;
+    const b = document.createElement('div');
+    b.className = 'clue-box';
+    b.innerHTML = `<div class="clue-label">${c.clue_labels[i] || 'Pista ' + (i+1)}</div><div class="clue-text">${c.clues[i]}</div>`;
+    cl.appendChild(b);
+  }
+}
+
+function renderGuesses() {
+  const el = document.getElementById('guesses');
+  el.innerHTML = '';
+  gs.guesses.forEach(g => {
+    const r = document.createElement('div');
+    r.className = 'guess-row' + (g.correct ? '' : ' wrong');
+    r.innerHTML = `<span class="guess-icon">${g.correct ? '✓' : '✗'}</span><span class="guess-text">${g.text}</span>`;
+    el.appendChild(r);
+  });
+}
+
+// ── GAME LOGIC ────────────────────────────────────────────────
+function norm(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim();
+}
+
+function check(input) {
+  const c = CASES[gs.idx];
+  const inp = norm(input);
+  const diag = norm(c.diagnosis);
+  if (inp === diag) return true;
+  for (const a of c.aliases) {
+    const na = norm(a);
+    if (inp === na) return true;
+    if (na.includes(inp) && inp.length > 5) return true;
+  }
+  if (diag.includes(inp) && inp.length > 4) return true;
+  if (inp.includes(diag)) return true;
+  return false;
+}
+
+function submit() {
+  if (gs.done) return;
+  const inp = document.getElementById('diagnosis-input');
+  const val = inp.value.trim();
+  if (!val || val.length < 2) return;
+
+  hideAC();
+  const correct = checkGuessFor(val, gs.idx);
+  gs.guesses.push({ text: val, correct });
+  gs.attempts++;
+
+  if (correct) {
+    gs.won = true;
+    gs.done = true;
+    stats.played++;
+    stats.wins++;
+    stats.streak++;
+    stats.best = Math.max(stats.best, stats.streak);
+    stats.dist[gs.attempts] = (stats.dist[gs.attempts] || 0) + 1;
+  } else {
+    if (!correct) {
+      inp.classList.add('shake');
+      setTimeout(() => inp.classList.remove('shake'), 400);
+    }
+    if (gs.attempts >= MAX) {
+      gs.done = true;
+      stats.played++;
+      stats.streak = 0;
+      stats.dist[0] = (stats.dist[0] || 0) + 1;
+    }
+  }
+
+  inp.value = '';
+  renderDots();
+  renderCase();
+  renderGuesses();
+
+  if (gs.done) {
+    setTimeout(() => {
+      renderResult();
+      document.getElementById('input-wrap').style.display = 'none';
+    }, 400);
+  }
+
+  save();
+}
+
+// ── RESULT ────────────────────────────────────────────────────
+function buildGrid() {
+  return gs.guesses.map(g => g.correct ? '🟩' : '🟥').join('') +
+    (gs.won ? '' : '⬜'.repeat(MAX - gs.attempts));
+}
+
+function buildShare() {
+  const date = new Date().toLocaleDateString('pt-BR');
+  const res = gs.won ? `${gs.attempts}/${MAX}` : `X/${MAX}`;
+  return `🩺 Conduta — ${date}\nCaso #${gs.idx + 1} — ${res}\n\n${buildGrid()}\n\nconduta.md`;
+}
+
+function renderResult() {
+  const c = CASES[gs.idx];
+  const el = document.getElementById('result-card');
+  el.classList.add('show');
+  const share = buildShare();
+  window._share = share;
+
+  el.innerHTML = `
+    <div class="result-badge ${gs.won ? 'win' : 'lose'}">
+      ${gs.won ? `✅ Acertou em ${gs.attempts} tentativa${gs.attempts > 1 ? 's' : ''}` : '❌ Não foi dessa vez'}
+    </div>
+    <div class="result-diagnosis">${c.diagnosis}</div>
+    <div class="result-meta">CID-10 ${c.cid} · ${c.category}</div>
+    <div class="result-divider"></div>
+    <div class="result-section-label">Discussão Clínica</div>
+    <div class="result-body">${c.explanation}</div>
+    <div class="result-divider"></div>
+    <div class="result-section-label">Referências</div>
+    <div class="result-refs">${c.reference}</div>
+    <div class="share-area">
+      <div class="result-section-label" style="margin-bottom:10px">Compartilhar</div>
+      <div class="share-preview">${share}</div>
+      <div class="share-btns">
+        <button class="share-btn whatsapp" onclick="shareWA()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </button>
+        <button class="share-btn telegram" onclick="shareTG()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+          Telegram
+        </button>
+        <button class="share-btn copy" onclick="copyShare()" id="copy-btn">📋 Copiar</button>
+      </div>
+    </div>
+  `;
+}
+
+function shareWA() { window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(window._share), '_blank'); }
+function shareTG() { window.open('https://t.me/share/url?url=https://conduta.md&text=' + encodeURIComponent(window._share), '_blank'); }
+function copyShare() {
+  navigator.clipboard.writeText(window._share).then(() => {
+    toast('Copiado!');
+    const b = document.getElementById('copy-btn');
+    if (b) { b.textContent = '✓ Copiado'; }
+  });
+}
+
+// ── AUTOCOMPLETE ──────────────────────────────────────────────
+function onInput(e) {
+  const val = norm(e.target.value);
+  if (val.length < 2) { hideAC(); return; }
+  const matches = ALL_DIAGNOSES.filter(d => norm(d).includes(val)).slice(0, 7);
+  if (!matches.length) { hideAC(); return; }
+
+  const ac = document.getElementById('autocomplete');
+  ac.innerHTML = '';
+  ac.style.display = 'block';
+  acSel = -1;
+
+  matches.forEach(m => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+    item.textContent = m;
+    item.addEventListener('mousedown', () => {
+      document.getElementById('diagnosis-input').value = m;
+      hideAC();
+    });
+    ac.appendChild(item);
+  });
+}
+
+function onKey(e) {
+  const ac = document.getElementById('autocomplete');
+  const items = ac.querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acSel = Math.min(acSel + 1, items.length - 1);
+    updAC(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acSel = Math.max(acSel - 1, -1);
+    updAC(items);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (acSel >= 0 && items[acSel]) {
+      document.getElementById('diagnosis-input').value = items[acSel].textContent;
+      hideAC();
+    } else { submit(); }
+  } else if (e.key === 'Escape') { hideAC(); }
+}
+
+function updAC(items) {
+  items.forEach((it, i) => it.classList.toggle('sel', i === acSel));
+  if (acSel >= 0 && items[acSel]) {
+    document.getElementById('diagnosis-input').value = items[acSel].textContent;
+  }
+}
+
+function hideAC() {
+  document.getElementById('autocomplete').style.display = 'none';
+  acSel = -1;
+}
+
+// ── TABS ──────────────────────────────────────────────────────
+function switchTab(tab) {
+  const gameView = document.getElementById('game-view');
+  const archiveView = document.getElementById('archive-view');
+  const btnArquivo = document.getElementById('btn-arquivo');
+  if (tab === 'hoje') {
+    gameView.classList.remove('hidden');
+    archiveView.classList.remove('show');
+    if (btnArquivo) { btnArquivo.style.background = ''; btnArquivo.style.borderColor = ''; btnArquivo.style.color = ''; }
+  } else {
+    gameView.classList.add('hidden');
+    archiveView.classList.add('show');
+    if (btnArquivo) { btnArquivo.style.background = 'var(--bg3)'; btnArquivo.style.borderColor = 'var(--lilac)'; btnArquivo.style.color = 'var(--lime)'; }
+    renderArchive();
+  }
+}
+
+// ── ARCHIVE LIST ──────────────────────────────────────────────
+function renderArchive() {
+  const list = document.getElementById('archive-list');
+  const todayGlobal = globalDay(new Date());
+  if (todayGlobal === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px">Ainda não há casos anteriores.<br>Volte amanhã!</div>';
+    return;
+  }
+  list.innerHTML = '';
+  const diffLabels = { 1: 'Fácil', 2: 'Médio', 3: 'Difícil' };
+  const diffClass = { 1: 'easy', 2: 'medium', 3: 'hard' };
+
+  for (let d = todayGlobal - 1; d >= 0; d--) {
+    const caseDate = dateFromGlobalDay(d);
+    const key = keyFromDate(caseDate);
+    const cIdx = d % CASES.length;
+    const c = CASES[cIdx];
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('conduta_game_' + key)); } catch(e) {}
+
+    let statusIcon = '○';
+    if (saved && saved.done) statusIcon = saved.won ? '✓' : '✗';
+
+    const dateStr = caseDate.toLocaleDateString('pt-BR', { day:'numeric', month:'short', year:'numeric' });
+    const item = document.createElement('div');
+    item.className = 'archive-item';
+    item.onclick = () => openArchiveCase(d);
+    item.innerHTML = `
+      <div class="archive-num">#${d + 1}</div>
+      <div class="archive-info">
+        <div class="archive-date">${dateStr}</div>
+        <div class="archive-diag">${saved && saved.done ? c.diagnosis : '???'}</div>
+        <div class="archive-cat">${c.category}</div>
+      </div>
+      <div class="archive-diff ${diffClass[c.difficulty] || 'medium'}">${diffLabels[c.difficulty] || 'Médio'}</div>
+      <div class="archive-status" style="color:${saved && saved.done ? (saved.won ? 'var(--lime)' : 'var(--error)') : 'var(--muted)'}">${statusIcon}</div>
+    `;
+    list.appendChild(item);
+  }
+}
+
+// ── ARCHIVE GAME ──────────────────────────────────────────────
+let amState = { globalDay: 0, cIdx: 0, attempts: 0, guesses: [], won: false, done: false };
+let amAcSel = -1;
+
+function openArchiveCase(gDay) {
+  const cDate = dateFromGlobalDay(gDay);
+  const key = keyFromDate(cDate);
+  const cIdx = gDay % CASES.length;
+  const c = CASES[cIdx];
+
+  amState = { globalDay: gDay, cIdx, attempts: 0, guesses: [], won: false, done: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem('conduta_game_' + key));
+    if (saved) amState = Object.assign(amState, saved);
+  } catch(e) {}
+
+  const dateStr = cDate.toLocaleDateString('pt-BR', { day:'numeric', month:'long', year:'numeric' });
+  document.getElementById('am-title').textContent = 'Caso #' + (gDay + 1);
+  document.getElementById('am-sub').textContent = dateStr + ' · ' + c.category;
+
+  document.getElementById('archive-modal').classList.add('open');
+  document.getElementById('archive-modal').scrollTop = 0;
+
+  amRenderDots();
+  amRenderCase();
+  amRenderGuesses();
+
+  if (amState.done) {
+    amRenderResult();
+    document.getElementById('am-input-wrap').style.display = 'none';
+  } else {
+    document.getElementById('am-result-card').classList.remove('show');
+    document.getElementById('am-result-card').innerHTML = '';
+    document.getElementById('am-input-wrap').style.display = 'block';
+  }
+
+  const inp = document.getElementById('am-input');
+  inp.value = '';
+  inp.oninput = amOnInput;
+  inp.onkeydown = amOnKey;
+}
+
+function closeArchiveModal() {
+  document.getElementById('archive-modal').classList.remove('open');
+  renderArchive();
+}
+
+function amSaveGame() {
+  try {
+    const cDate = dateFromGlobalDay(amState.globalDay);
+    const key = keyFromDate(cDate);
+    localStorage.setItem('conduta_game_' + key, JSON.stringify(amState));
+  } catch(e) {}
+}
+
+function amRenderDots() {
+  const el = document.getElementById('am-dots');
+  el.innerHTML = '';
+  for (let i = 0; i < MAX; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    if (i < amState.attempts) d.classList.add(amState.guesses[i]?.correct ? 'correct' : 'wrong');
+    else if (i === amState.attempts && !amState.done) d.classList.add('current');
+    el.appendChild(d);
+  }
+}
+
+function amRenderCase() {
+  const c = CASES[amState.cIdx];
+  document.getElementById('am-case-text').textContent = c.clues[0];
+  document.getElementById('am-clue-counter').textContent = `Pista ${Math.min(amState.attempts + 1, MAX)} de ${MAX}`;
+  const cl = document.getElementById('am-clues');
+  cl.innerHTML = '';
+  for (let i = 1; i <= Math.min(amState.attempts, MAX - 1); i++) {
+    if (!c.clues[i]) continue;
+    const b = document.createElement('div');
+    b.className = 'clue-box';
+    b.innerHTML = `<div class="clue-label">${c.clue_labels[i]}</div><div class="clue-text">${c.clues[i]}</div>`;
+    cl.appendChild(b);
+  }
+}
+
+function amRenderGuesses() {
+  const el = document.getElementById('am-guesses');
+  el.innerHTML = '';
+  amState.guesses.forEach(g => {
+    const r = document.createElement('div');
+    r.className = 'guess-row' + (g.correct ? '' : ' wrong');
+    r.innerHTML = `<span class="guess-icon">${g.correct ? '✓' : '✗'}</span><span class="guess-text">${g.text}</span>`;
+    el.appendChild(r);
+  });
+}
+
+function amSubmit() {
+  if (amState.done) return;
+  const inp = document.getElementById('am-input');
+  const val = inp.value.trim();
+  if (!val || val.length < 2) return;
+  hideAmAC();
+  const correct = checkGuessFor(val, amState.cIdx);
+  amState.guesses.push({ text: val, correct });
+  amState.attempts++;
+  if (correct) { amState.won = true; amState.done = true; }
+  else if (amState.attempts >= MAX) { amState.done = true; }
+  inp.value = '';
+  amRenderDots();
+  amRenderCase();
+  amRenderGuesses();
+  if (amState.done) {
+    setTimeout(() => {
+      amRenderResult();
+      document.getElementById('am-input-wrap').style.display = 'none';
+    }, 400);
+  }
+  amSaveGame();
+}
+
+function checkGuessFor(input, cIdx) {
+  const c = CASES[cIdx];
+  const inp = norm(input);
+  const diag = norm(c.diagnosis);
+  if (inp === diag) return true;
+  for (const a of c.aliases) {
+    const na = norm(a);
+    if (inp === na) return true;
+    if (na.includes(inp) && inp.length > 5) return true;
+  }
+  if (diag.includes(inp) && inp.length > 4) return true;
+  if (inp.includes(diag)) return true;
+  return false;
+}
+
+function amRenderResult() {
+  const c = CASES[amState.cIdx];
+  const el = document.getElementById('am-result-card');
+  el.classList.add('show');
+  el.innerHTML = `
+    <div class="result-badge ${amState.won ? 'win' : 'lose'}">
+      ${amState.won ? `✅ Acertou em ${amState.attempts} tentativa${amState.attempts > 1 ? 's' : ''}` : '❌ Não foi dessa vez'}
+    </div>
+    <div class="result-diagnosis">${c.diagnosis}</div>
+    <div class="result-meta">CID-10 ${c.cid} · ${c.category}</div>
+    <div class="result-divider"></div>
+    <div class="result-section-label">Discussão Clínica</div>
+    <div class="result-body">${c.explanation}</div>
+    <div class="result-divider"></div>
+    <div class="result-section-label">Referências</div>
+    <div class="result-refs">${c.reference}</div>
+  `;
+}
+
+function amOnInput(e) {
+  const val = norm(e.target.value);
+  if (val.length < 2) { hideAmAC(); return; }
+  const matches = ALL_DIAGNOSES.filter(d => norm(d).includes(val)).slice(0, 7);
+  if (!matches.length) { hideAmAC(); return; }
+  const ac = document.getElementById('am-autocomplete');
+  ac.innerHTML = '';
+  ac.style.display = 'block';
+  amAcSel = -1;
+  matches.forEach(m => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+    item.textContent = m;
+    item.addEventListener('mousedown', () => {
+      document.getElementById('am-input').value = m;
+      hideAmAC();
+    });
+    ac.appendChild(item);
+  });
+}
+
+function amOnKey(e) {
+  const ac = document.getElementById('am-autocomplete');
+  const items = ac.querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') { e.preventDefault(); amAcSel = Math.min(amAcSel + 1, items.length - 1); updAmAC(items); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); amAcSel = Math.max(amAcSel - 1, -1); updAmAC(items); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (amAcSel >= 0 && items[amAcSel]) { document.getElementById('am-input').value = items[amAcSel].textContent; hideAmAC(); } else { amSubmit(); } }
+  else if (e.key === 'Escape') { hideAmAC(); }
+}
+
+function updAmAC(items) {
+  items.forEach((it, i) => it.classList.toggle('sel', i === amAcSel));
+  if (amAcSel >= 0 && items[amAcSel]) document.getElementById('am-input').value = items[amAcSel].textContent;
+}
+
+function hideAmAC() {
+  document.getElementById('am-autocomplete').style.display = 'none';
+  amAcSel = -1;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.input-wrap')) { hideAC(); hideAmAC(); }
+});
+
+init();
+function openModal(type) {
+  if (type === 'stats') {
+    document.getElementById('s-played').textContent = stats.played;
+    document.getElementById('s-wins').textContent = stats.wins;
+    document.getElementById('s-streak').textContent = stats.streak;
+    document.getElementById('s-best').textContent = stats.best;
+    const db = document.getElementById('dist-bars');
+    db.innerHTML = '';
+    const cur = gs.done && gs.won ? gs.attempts : -1;
+    [1,2,3,4,5].forEach(n => {
+      const count = stats.dist[n] || 0;
+      const maxV = Math.max(...[1,2,3,4,5].map(x => stats.dist[x] || 0), 1);
+      const pct = Math.max(Math.round((count / maxV) * 100), 8);
+      db.innerHTML += `<div class="dist-row">
+        <span class="dist-num">${n}</span>
+        <div class="dist-bar-wrap">
+          <div class="dist-bar ${n === cur ? 'active' : ''}" style="width:${pct}%">
+            <span>${count}</span>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  document.getElementById('overlay-' + type).classList.add('open');
+}
+
+function closeModal(type) { document.getElementById('overlay-' + type).classList.remove('open'); }
+function closeOnBg(e, type) { if (e.target === e.currentTarget) closeModal(type); }
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+</script>
+</body>
+</html>
