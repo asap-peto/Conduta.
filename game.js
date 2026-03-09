@@ -47,22 +47,28 @@ var todayGlobal = 0; // dia global de hoje (calculado em init)
 
 /* ── FUNÇÕES DE DATA ─────────────────────────────────────── */
 function globalDay(date) {
-  var d0 = new Date(EPOCH);
-  return Math.floor((date - d0) / 86400000);
+  var d0  = new Date(2026, 0, 1); // meia-noite LOCAL — evita bug de fuso horário
+  var now = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.floor((now - d0) / 86400000);
 }
 
 function dateFromGlobalDay(n) {
-  var d = new Date(EPOCH);          // corrigido: era '2025-01-01' no original
+  var d = new Date(2026, 0, 1); // meia-noite LOCAL
   d.setDate(d.getDate() + n);
   return d;
 }
 
 function dayKey() {
-  return new Date().toISOString().split('T')[0];
+  var d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
 }
 
 function keyFromDate(d) {
-  return d.toISOString().split('T')[0];
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
 }
 
 function dayIdx() {
@@ -118,7 +124,7 @@ function buildGrid() {
 function buildShare() {
   var date = new Date().toLocaleDateString('pt-BR');
   var res  = gs.won ? (gs.attempts + '/' + MAX) : ('X/' + MAX);
-  return '🩺 Conduta — ' + date + '\nCaso #' + (gs.idx + 1) + ' — ' + res + '\n\n' + buildGrid() + '\n\nhttps://conduta.cc/';
+  return '🩺 Conduta — ' + date + '\nCaso #' + (todayGlobal + 1) + ' — ' + res + '\n\n' + buildGrid() + '\n\nhttps://conduta.cc/';
 }
 
 function shareWhatsApp() {
