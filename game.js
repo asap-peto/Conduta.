@@ -118,7 +118,7 @@ function buildGrid() {
 function buildShare() {
   var date = new Date().toLocaleDateString('pt-BR');
   var res  = gs.won ? (gs.attempts + '/' + MAX) : ('X/' + MAX);
-  return '🩺 Conduta — ' + date + '\nCaso #' + (gs.idx + 1) + ' — ' + res + '\n\n' + buildGrid() + '\n\nconduta.md';
+  return '🩺 Conduta — ' + date + '\nCaso #' + (gs.idx + 1) + ' — ' + res + '\n\n' + buildGrid() + '\n\nhttps://conduta.cc/';
 }
 
 function shareWhatsApp() {
@@ -126,7 +126,7 @@ function shareWhatsApp() {
 }
 
 function shareTelegram() {
-  window.open('https://t.me/share/url?url=https://conduta.md&text=' + encodeURIComponent(window._shareText), '_blank');
+  window.open('https://t.me/share/url?url=https://https://conduta.cc/&text=' + encodeURIComponent(window._shareText), '_blank');
 }
 
 function copyShare() {
