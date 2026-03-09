@@ -828,17 +828,17 @@ var CASES = [
   explanation:"DIP é infecção do trato genital superior feminino, geralmente ascendente, causada por C. trachomatis, N. gonorrhoeae ou flora vaginal polimicrobiana. Os critérios mínimos do CDC (dor anexial ou à mobilização do colo) permitem tratamento empírico sem aguardar cultura. Complicações: abscesso tubo-ovariano (indica internação + antibiótico IV), infertilidade, gravidez ectópica, dor pélvica crônica. O DIU não precisa ser removido.",
   reference:"CDC STI Treatment Guidelines 2021. FEBRASGO - DIP, 2022.",difficulty:2},
 
-  {id:68,diagnosis:"Depressão Maior",aliases:["depressão","depressão maior","depressão unipolar","episódio depressivo maior","transtorno depressivo maior"],cid:"F32",category:"Psiquiatria / Saúde Mental",
+  {id:68,diagnosis:"Doença de Chagas",aliases:["tripanossomíase americana","chagas agudo","chagas"],cid:"B57",category:"Infectologia",
   clues:[
-    "Mulher, 36 anos, encaminhada pelo clínico geral após relatar 'não sentir mais vontade de nada' há 3 meses. Não está indo trabalhar. Chora sem motivo. Marido está preocupado.",
-    "Dorme 11–12 horas por dia mas acorda cansada. Não come — perdeu 8 kg sem dieta. Não sente prazer em nada que antes gostava (pintava aquarelas, cuidava do jardim — parou tudo). Concentração prejudicada.",
-    "Episódio semelhante há 5 anos que durou 6 meses — tratou com antidepressivo por 1 ano, melhorou. Sem histórico de euforia ou mania. Sem uso de álcool ou drogas. Tireóide normal no último exame.",
-    "Nega ideação suicida ativa no momento, mas relata que 'às vezes pensa que seria melhor não estar aqui'. Sem plano. Rastreio PHQ-9: escore 22 (depressão grave). Exames físicos e laboratoriais normais: TSH, hemograma, glicemia — sem causa orgânica.",
-    "Critérios DSM-5 preenchidos: ≥ 5 sintomas em ≥ 2 semanas incluindo humor deprimido e anedonia + prejuízo funcional. Diagnóstico: Episódio Depressivo Maior grave sem características psicóticas. Iniciado sertralina 50 mg/dia (titulada até 150 mg) + psicoterapia cognitivo-comportamental. Avaliação de risco semanal."
+    "Criança, 6 anos, levada à UBS por febre persistente há 15 dias, cansaço fácil e inchaço ao redor do olho esquerdo. Mãe acha que foi picada de inseto.",
+    "O edema palpebral esquerdo é indolor, não pruriginoso, sem sinais de celulite. A febre é vespertina e irregular. A criança está cada vez mais prostrada.",
+    "Família mora no interior da Bahia, em casa de adobe. Há 3 semanas encontraram um inseto grande e achatado (barbeiro) no quarto. Sem histórico de doença prévia.",
+    "Ao exame: hepatoesplenomegalia, adenopatia generalizada, ECG com bloqueio de ramo direito de 1º grau. Esfregaço de sangue periférico: formas tripomastigotas visualizadas.",
+    "Sorologia: IgG e IgM por imunofluorescência indireta e ELISA ambos reagentes para Trypanosoma cruzi. Xenodiagnóstico positivo."
   ],
-  clue_labels:["Anedonia e tristeza persistente por > 2 semanas","Hipersônia, apetite reduzido e anedonia","Episódio anterior — recorrência","Ideação passiva e PHQ-9 grave","Critérios DSM-5 e tratamento bimodal"],
-  explanation:"Depressão Maior é a principal causa de incapacidade no mundo (OMS). Os dois sintomas cardinais são humor deprimido e anedonia. O DSM-5 exige ≥ 5 sintomas por ≥ 2 semanas. O rastreio com PHQ-9 é validado e guia a gravidade. ISRS são a primeira linha farmacológica. A combinação de psicofármaco + psicoterapia tem maior eficácia que qualquer modalidade isolada. Avaliação de risco de suicídio é sempre necessária.",
-  reference:"APA - DSM-5, 2013. CFM - Resolução sobre Saúde Mental. NICE Guidelines Depression 2022.",difficulty:1},
+  clue_labels:["Febre e edema palpebral","Caracterização do edema","Histórico e exposição vetorial","Exame físico e parasitoscopia","Sorologia confirmatória"],
+  explanation:"Doença de Chagas aguda tem como marca o sinal de Romaña (edema bipalpebral unilateral indolor) quando a porta de entrada é conjuntival. É doença de notificação compulsória. O diagnóstico agudo é feito pelo encontro do parasita no sangue. Tratamento com benznidazol indicado na fase aguda.",
+  reference:"Rassi A Jr et al. Chagas disease. Lancet 2010. MS Brasil - Consensus on Chagas Disease. Rev Soc Bras Med Trop 2020.",difficulty:2},
 
   {id:69,diagnosis:"Transtorno Bipolar Tipo I",aliases:["transtorno bipolar","bipolar","mania","episódio maníaco","tb tipo 1"],cid:"F31",category:"Psiquiatria / Saúde Mental",
   clues:[
