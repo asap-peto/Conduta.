@@ -852,17 +852,35 @@ var CASES = [
   explanation:"Transtorno Bipolar Tipo I é caracterizado por ≥ 1 episódio maníaco (com ou sem depressão). A mania clássica inclui euforia ou irritabilidade + redução do sono + grandiosidade + comportamentos de risco. Antidepressivos isolados podem desencadear mania. Estabilizadores de humor (lítio, valproato) são a base do tratamento. O lítio é o único fármaco com evidência de redução de suicídio no TB.",
   reference:"APA - DSM-5, 2013. Malhi GS et al. Bipolar Disorder. Nat Rev Dis Primers 2020.",difficulty:2},
 
-  {id:70,diagnosis:"Esquizofrenia",aliases:["esquizofrenia","psicose esquizofrênica","primeiro episódio psicótico","psicose"],cid:"F20",category:"Psiquiatria / Saúde Mental",
-  clues:[
-    "Jovem, 20 anos, trazido pela mãe ao PS. Há 4 meses está isolado no quarto, não vai à faculdade, parou de tomar banho e falar com amigos. A mãe acha que 'está com depressão'.",
-    "Quando conversa com a mãe, diz que 'as pessoas na rua o observam' e que a vizinha coloca 'ondas no apartamento para roubar seus pensamentos'. Às vezes ri sozinho sem motivo aparente.",
-    "Sem uso de álcool, maconha, cocaína ou outra droga (confirmado com toxicológico urinário negativo). Sem febre, sem cefaleia, sem convulsões. Pai com 'problema nervoso' tratado com remédio por anos.",
-    "Ao exame: afeto embotado, alogia (respostas monossilábicas), avolição. Delírios de referência e perseguição estruturados. Alucinações auditivas — 'vozes que comentam o que estou fazendo'. Sem comprometimento de memória ou orientação. RNM de crânio: normal. EEG: normal.",
-    "Critérios DSM-5: sintoma A (2+ dos seguintes por ≥ 1 mês): delírios + alucinações + fala desorganizada. Disfunção social/ocupacional > 6 meses. Sem causa orgânica identificada. Diagnóstico: Esquizofrenia, primeiro episódio psicótico. Iniciado risperidona 2 mg/dia com titulação + reabilitação psicossocial. Internação psiquiátrica voluntária."
+  {id: 86,
+  diagnosis: "Íleo Biliar",
+  aliases: [
+    "ileo biliar",
+    "obstrução por cálculo biliar",
+    "obstrucao por calculo biliar",
+    "gallstone ileus",
+    "fístula colecistoentérica",
+    "fistula colecistoenterica"
   ],
-  clue_labels:["Isolamento social e abandono das atividades","Delírios de perseguição e passividade","Ausência de causa orgânica ou tóxica","Sintomas positivos e negativos ao exame","Critérios DSM-5 — primeiro episódio"],
-  explanation:"Esquizofrenia tem pico de início no final da adolescência/início da vida adulta. Os sintomas positivos (alucinações, delírios, pensamento desorganizado) e negativos (alogia, anedonia, avolição) coexistem. O diagnóstico requer ≥ 2 sintomas A por ≥ 1 mês + disfunção por ≥ 6 meses sem causa orgânica ou tóxica. Os antipsicóticos de 2ª geração são a primeira escolha. A detecção precoce melhora o prognóstico.",
-  reference:"APA - DSM-5, 2013. Leucht S et al. Lancet 2017.",difficulty:2},
+  cid: "K56.3",
+  category: "Cirurgia / Gastroenterologia",
+  clues: [
+    "Mulher, 74 anos, com histórico de 'crises de barriga' recorrentes há anos, procura o PS com dor abdominal em cólica há 3 dias — desta vez sem melhora espontânea. Vômitos persistentes e fecaloides nas últimas 12 horas. Parou de eliminar gases há 18 horas.",
+    "Abdome distendido, timpânico, com ruídos hidroaéreos em salvas metálicos. Sem sinais de peritonite. Cicatriz de colecistectomia aberta em FHD — cirurgia há 18 anos. PA 148/88, FC 102, Tax 37,6°C.",
+    "Radiografia de abdome: alças de delgado dilatadas com níveis hidroaéreos em degrau. Radiologista anota como achado adicional: 'ar no sistema biliar intra-hepático (pneumobilia)'. Leuco 14.800, PCR 88, função hepática e renal normais.",
+    "TC de abdome: dilatação de delgado até válvula ileocecal, ponto de transição em fossa ilíaca direita. No local: estrutura ovóide hiperdensa de 3,2 cm, intraluminal, com calcificação periférica, sem massa extrínseca.",
+    "Revisão da TC com janela óssea: pneumobilia + estrutura hiperdensa em íleo terminal + perda de plano entre duodeno e fossa vesicular, sugestivo de comunicação entérica prévia. Vesícula não visualizada individualmente. Tríade de Rigler completa."
+  ],
+  clue_labels: [
+    "Obstrução intestinal em idosa com cólicas recorrentes",
+    "Exame físico — obstrução mecânica + antecedente cirúrgico",
+    "Pneumobilia ao RX — achado que parece incidental",
+    "TC — corpo estranho intraluminal em ponto de transição",
+    "Tríade de Rigler completa — diagnóstico fechado"
+  ],
+  explanation: "O íleo biliar responde por 1–4% das obstruções de delgado — proporção que sobe para 25% em maiores de 65 anos sem cirurgia prévia. Um cálculo > 2,5 cm erode a vesícula, forma fístula colecistoentérica (mais comum: colecistoduodenal) e impacta no íleo terminal, o segmento mais estreito. A tríade de Rigler (pneumobilia + obstrução de delgado + cálculo ectópico) é patognomônica mas vista em apenas 15–35% das primeiras imagens. Tratamento: enterolitotomia de emergência. Colecistectomia e fechamento da fístula no mesmo ato ou em segundo tempo conforme condição do paciente.",
+  reference: "Ploneda-Valencia CF et al. J Nat Sci Biol Med. 2017. Lobo DN et al. J Clin Gastroenterol. 2000.",
+  difficulty: 3},
 
   {id:71,diagnosis:"Síndrome de Abstinência Alcoólica",aliases:["abstinência alcoólica","delirium tremens","saa","síndrome de abstinência do álcool","abstinência de álcool"],cid:"F10.3",category:"Psiquiatria / Emergência",
   clues:[
