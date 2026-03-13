@@ -894,17 +894,28 @@ var CASES = [
   explanation:"A Síndrome de Abstinência Alcoólica inicia 6–24h após a última dose e o Delirium Tremens se instala em 48–72h. A tríade do DT: alucinações + tremores + instabilidade autonômica. O CIWA-Ar quantifica a gravidade. Os benzodiazepínicos são o tratamento padrão (protocolo de titulação sintomática). A tiamina DEVE preceder a glicose para evitar Encefalopatia de Wernicke. Mortalidade do DT sem tratamento: 15–35%.",
   reference:"MS Brasil - SUPERA - Tratamento do Abuso de Álcool. ASAM Clinical Practice Guideline 2020.",difficulty:2},
 
-  {id:72,diagnosis:"Intoxicação por Organofosforado",aliases:["intoxicação por organofosforado","intoxicação por agrotóxico","organofosforado","inibidor de colinesterase"],cid:"T60.0",category:"Emergência / Toxicologia",
-  clues:[
-    "Homem, 45 anos, trabalhador rural do Mato Grosso, é trazido inconsciente pelo irmão após ser encontrado no plantio de soja. Ao redor, frascos de inseticida organofosforado (metamidofós).",
-    "Miose bilateral puntiforme. Sialorreia copiosa, lacrimejamento intenso, broncoespasmo audível. Bradicardia: 42 bpm. Sudorese profusa. Vômito de conteúdo alimentar. Fezes líquidas involuntárias.",
-    "Trabalhava sem EPI. Aplicação de pesticida com vento favorável (exposição inalatória + cutânea). Sem histórico de intoxicação anterior. Família relata que 'não lembrava de lavar as mãos'.",
-    "GCS: 8 (E2V2M4). Fasciculações musculares visíveis em face e membros. Hiperestimulação colinérgica clássica: SLUDGE (Salivação, Lacrimejamento, Urinação, Defecação, GI distress, Emese). DUMBELS também presentes. Colinesterase eritrocitária: 20% do valor normal.",
-    "Diagnóstico: Intoxicação grave por organofosforado. Atropina 2–4 mg IV a cada 5–10 min até secagem das secreções (atropinização — não é para corrigir bradicardia isolada). Pralidoxima 1–2 g IV em 15–30 min (dentro de 24h para ser eficaz). Intubação orotraqueal por insuficiência respiratória. Descontaminação com lavagem da pele e vômito induzido não indicado."
+  {id: 72,
+  diagnosis: "Síndrome Torácica Aguda",
+  aliases: ["sindrome toracica aguda","STA","acute chest syndrome","crise pulmonar falciforme","complicacao pulmonar falciforme"],
+  cid: "D57.0",
+  category: "Hematologia / Emergência",
+  clues: [
+    "Jovem de 19 anos, trazido pela mãe à UPA com febre (38,8°C), dor torácica pleurítica à direita e tosse seca há 2 dias. Saturação de O₂: 91% em ar ambiente. FR: 26 irpm. Sem viagem recente, sem tabagismo.",
+    "Murmúrio vesicular reduzido em base direita. Dor à palpação em hipocôndrio direito. Escleras com discreta icterícia. A mãe menciona que o filho 'sempre foi meio fraquinho do sangue desde bebê' — nunca investigado formalmente.",
+    "Hemograma: Hb 7,1 g/dL, leucócitos 17.900 sem desvio importante, plaquetas 510.000. Bilirrubina indireta 4,1 mg/dL. DHL elevado. Reticulócitos 9,4%. RX de tórax solicitado. Hemocultura e sorologias colhidas.",
+    "Radiografia de tórax: novo infiltrado alveolar em lobo inferior direito — ausente em RX de triagem ocupacional de 8 meses atrás. Gasometria: PaO₂ 60 mmHg. Eletroforese de hemoglobina retorna com padrão SS confirmado.",
+    "Hematologia contactada à beira do leito. Indica transfusão de troca imediata. Inicia-se O₂ suplementar, analgesia, hidratação e antibioticoterapia com cobertura para atípicos (azitromicina + ceftriaxona)."
   ],
-  clue_labels:["Inconsciência após exposição a agrotóxico","Síndrome muscarínica — miose e bradicardia","Exposição cutânea e inalatória sem EPI","SLUDGE e colinesterase suprimida","Atropina + pralidoxima — tratamento específico"],
-  explanation:"Os organofosforados inibem a acetilcolinesterase, causando acúmulo de acetilcolina. Os efeitos são muscarínicos (SLUDGE/DUMBELS), nicotínicos (fasciculações, paralisia) e centrais (convulsão, coma). O diagnóstico é clínico. A atropina antagoniza os efeitos muscarínicos (secretomotores e cardíacos). A pralidoxima reativa a colinesterase se usada precocemente (< 24–48h). Notificação ao SINAN obrigatória.",
-  reference:"MS Brasil - Protocolo de Intoxicações Exógenas, 2020. Eddleston M et al. Lancet 2008.",difficulty:3},
+  clue_labels: [
+    "Jovem com febre, dor pleurítica e hipoxemia",
+    "Icterícia discreta e história de anemia desde a infância",
+    "Hemólise sem causa aparente — infiltrado a caminho",
+    "Novo infiltrado pulmonar — padrão SS confirmado",
+    "Transfusão de troca e antibióticos para atípicos"
+  ],
+  explanation: "A Síndrome Torácica Aguda (STA) é definida por novo infiltrado pulmonar associado a pelo menos um de: febre, dor torácica, tosse ou hipoxemia — em paciente com doença falciforme. É a principal causa de morte nessa população. Os gatilhos incluem infecção (pneumonia por atípicos é frequente), embolia gordurosa por necrose medular e oclusão vascular in situ. O tratamento envolve O₂ suplementar, analgesia cuidadosa, antibióticos com cobertura para atípicos e transfusão de troca nos casos graves.",
+  reference: "Gladwin MT & Vichinsky E. N Engl J Med 2008. Protocolo ABHH — Doença Falciforme, 2022.",
+  difficulty: 3},
 
   {id:73,diagnosis:"Traumatismo Cranioencefálico Grave",aliases:["tce grave","traumatismo cranioencefálico","tce","trauma crânio","trauma cranioencefálico grave"],cid:"S06.3",category:"Emergência / Neurocirurgia",
   clues:[
