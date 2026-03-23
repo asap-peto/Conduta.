@@ -1,0 +1,13 @@
+{
+  "name": "Conduta",
+  "short_name": "Conduta",
+  "description": "Um caso clínico por dia. Quantas tentativas você precisa para chegar à conduta certa?",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#3c183d",
+  "theme_color": "#3c183d",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "Conduta_mini_logo.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
