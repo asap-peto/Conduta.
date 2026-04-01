@@ -253,18 +253,20 @@
 <div class="overlay" id="overlay-login" onclick="closeOnBg(event,'login')">
   <div class="modal" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeModal('login')">&times;</button>
-    <div class="modal-title">Entrar no Conduta</div>
+    <div class="modal-title" id="login-modal-title">Entrar no Conduta</div>
     <p class="login-subtitle">Salve seu progresso em qualquer dispositivo</p>
     <form class="login-form" onsubmit="handleLoginSubmit(event)">
       <input type="email" id="login-email" class="login-input" placeholder="seu@email.com" autocomplete="email" required>
-      <button type="submit" class="login-btn" id="login-submit-btn">Entrar com magic link</button>
+      <input type="password" id="login-password" class="login-input" placeholder="Senha" autocomplete="current-password" required>
+      <button type="submit" class="login-btn" id="login-submit-btn">Entrar</button>
     </form>
     <div class="login-perks">
       <div class="login-perk">🔥 Streak salvo na nuvem</div>
       <div class="login-perk">📊 Histórico completo</div>
       <div class="login-perk">🗺️ Mapa de progresso em breve</div>
     </div>
-    <p class="login-note">Sem senha. Enviamos um link de acesso para seu email.</p>
+    <p class="login-toggle" id="login-toggle">Não tem conta? <a href="#" onclick="setLoginMode('signup'); return false;">Criar conta</a></p>
+    <p class="login-note" id="login-note"></p>
   </div>
 </div>
 

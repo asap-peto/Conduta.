@@ -1,6 +1,6 @@
 /* ============================================================
    auth.js — Conduta.
-   Autenticação via Supabase (magic link).
+   Autenticação via Supabase (email + senha).
    Depende de: storage.js (currentUser, _supabase, saveProgress)
                supabase-js CDN carregado antes
    ============================================================ */
@@ -18,27 +18,70 @@ try {
   _supabase = null;
 }
 
-/* ── ENVIAR MAGIC LINK ─────────────────────────────────────── */
-async function sendMagicLink(email) {
+/* ── ESTADO DO MODAL ──────────────────────────────────────── */
+var _loginMode = 'login'; // 'login' ou 'signup'
+
+/* ── LOGIN (email + senha) ─────────────────────────────────── */
+async function loginWithPassword(email, password) {
   if (!_supabase) {
     toast('Erro de conexão. Tente novamente mais tarde.');
     return false;
   }
 
   try {
-    var res = await _supabase.auth.signInWithOtp({
+    var res = await _supabase.auth.signInWithPassword({
       email: email,
-      options: {
-        emailRedirectTo: window.location.origin + window.location.pathname
-      }
+      password: password
     });
 
     if (res.error) {
-      toast('Erro ao enviar link. Verifique o email.');
+      toast(res.error.message === 'Invalid login credentials'
+        ? 'Email ou senha incorretos.'
+        : res.error.message);
       return false;
     }
 
-    toast('Link enviado para seu email!');
+    return true;
+  } catch (e) {
+    toast('Erro de conexão. Tente novamente.');
+    return false;
+  }
+}
+
+/* ── CADASTRO (email + senha) ──────────────────────────────── */
+async function signUpWithPassword(email, password) {
+  if (!_supabase) {
+    toast('Erro de conexão. Tente novamente mais tarde.');
+    return false;
+  }
+
+  if (password.length < 6) {
+    toast('A senha deve ter no mínimo 6 caracteres.');
+    return false;
+  }
+
+  try {
+    var res = await _supabase.auth.signUp({
+      email: email,
+      password: password
+    });
+
+    if (res.error) {
+      if (res.error.message.includes('already registered')) {
+        toast('Este email já está cadastrado. Faça login.');
+      } else {
+        toast(res.error.message);
+      }
+      return false;
+    }
+
+    // Supabase pode exigir confirmação de email
+    if (res.data.user && !res.data.session) {
+      toast('Conta criada! Verifique seu email para confirmar.');
+      return 'confirm';
+    }
+
+    toast('Conta criada com sucesso!');
     return true;
   } catch (e) {
     toast('Erro de conexão. Tente novamente.');
@@ -201,34 +244,71 @@ function openLoginModal() {
     if (emailDisplay) emailDisplay.textContent = currentUser.email;
     openModal('account');
   } else {
+    setLoginMode('login');
     openModal('login');
+  }
+}
+
+/* ── ALTERNAR ENTRE LOGIN / CADASTRO ──────────────────────── */
+function setLoginMode(mode) {
+  _loginMode = mode;
+  var title    = document.getElementById('login-modal-title');
+  var btn      = document.getElementById('login-submit-btn');
+  var toggle   = document.getElementById('login-toggle');
+  var noteEl   = document.getElementById('login-note');
+
+  if (mode === 'signup') {
+    if (title)  title.textContent  = 'Criar conta';
+    if (btn)    btn.textContent    = 'Criar conta';
+    if (toggle) toggle.innerHTML   = 'Já tem conta? <a href="#" onclick="setLoginMode(\'login\'); return false;">Entrar</a>';
+    if (noteEl) noteEl.textContent = 'Mínimo de 6 caracteres na senha.';
+  } else {
+    if (title)  title.textContent  = 'Entrar no Conduta';
+    if (btn)    btn.textContent    = 'Entrar';
+    if (toggle) toggle.innerHTML   = 'Não tem conta? <a href="#" onclick="setLoginMode(\'signup\'); return false;">Criar conta</a>';
+    if (noteEl) noteEl.textContent = '';
   }
 }
 
 /* ── SUBMIT DO FORM DE LOGIN ───────────────────────────────── */
 function handleLoginSubmit(e) {
   if (e) e.preventDefault();
-  var input = document.getElementById('login-email');
-  var email = input ? input.value.trim() : '';
+  var emailInput = document.getElementById('login-email');
+  var passInput  = document.getElementById('login-password');
+  var email      = emailInput ? emailInput.value.trim() : '';
+  var password   = passInput  ? passInput.value : '';
 
   if (!email || email.indexOf('@') === -1) {
     toast('Digite um email válido.');
     return;
   }
 
+  if (!password || password.length < 6) {
+    toast('A senha deve ter no mínimo 6 caracteres.');
+    return;
+  }
+
   var btn = document.getElementById('login-submit-btn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Enviando...';
+    btn.textContent = 'Aguarde...';
   }
 
-  sendMagicLink(email).then(function(success) {
+  var action = _loginMode === 'signup'
+    ? signUpWithPassword(email, password)
+    : loginWithPassword(email, password);
+
+  action.then(function(result) {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Entrar com magic link';
+      btn.textContent = _loginMode === 'signup' ? 'Criar conta' : 'Entrar';
     }
-    if (success && input) {
-      input.value = '';
+    if (result === true) {
+      if (emailInput) emailInput.value = '';
+      if (passInput) passInput.value = '';
+    }
+    if (result === 'confirm') {
+      setLoginMode('login');
     }
   });
 }
