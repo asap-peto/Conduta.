@@ -236,17 +236,64 @@ async function reloadStateFromStorage() {
   } catch (e) {}
 }
 
-/* ── ABRIR MODAL DE LOGIN ──────────────────────────────────── */
+/* ── ABRIR MODAL DE LOGIN / PERFIL ────────────────────────── */
 function openLoginModal() {
   if (currentUser) {
-    // Se já logado, abre modal de conta
-    var emailDisplay = document.getElementById('account-email-display');
-    if (emailDisplay) emailDisplay.textContent = currentUser.email;
-    openModal('account');
+    openProfileModal();
   } else {
     setLoginMode('login');
     openModal('login');
   }
+}
+
+function openProfileModal() {
+  // Email
+  var emailDisplay = document.getElementById('account-email-display');
+  if (emailDisplay) emailDisplay.textContent = currentUser.email;
+
+  // Iniciais do avatar (primeira letra do email)
+  var avatarEl = document.getElementById('profile-avatar');
+  if (avatarEl) avatarEl.textContent = currentUser.email.charAt(0).toUpperCase();
+
+  // Estatísticas de desempenho
+  ensureBadgeFields();
+  var winPct = stats.played > 0 ? Math.round((stats.wins / stats.played) * 100) : 0;
+  var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+  set('p-played',     stats.played);
+  set('p-wins',       winPct + '%');
+  set('p-streak',     stats.streak);
+  set('p-best',       stats.best);
+  set('p-day-streak', stats.dayStreak     || 0);
+  set('p-day-best',   stats.dayStreakBest || 0);
+
+  // Status do freeze
+  var fEl = document.getElementById('p-freeze');
+  if (fEl) {
+    var thisWeek   = isoWeekKey(dayKey());
+    var freezeUsed = stats.lastFreezeWeek === thisWeek;
+    fEl.textContent = freezeUsed
+      ? '🧊 Freeze usado esta semana'
+      : '🧊 Freeze disponível (1 dia por semana)';
+    fEl.className = 'freeze-status' + (freezeUsed ? ' used' : ' available');
+  }
+
+  // Badges
+  var badgesEl = document.getElementById('p-badges');
+  if (badgesEl) {
+    badgesEl.innerHTML = '';
+    BADGES.forEach(function(badge) {
+      var unlocked = !!stats.badges[badge.id];
+      var item = document.createElement('div');
+      item.className = 'profile-badge-item ' + (unlocked ? 'unlocked' : 'locked');
+      item.title = badge.name + ' — ' + badge.desc;
+      item.innerHTML =
+        '<div class="profile-badge-emoji">' + (unlocked ? badge.emoji : '🔒') + '</div>' +
+        '<div class="profile-badge-name">' + badge.name + '</div>';
+      badgesEl.appendChild(item);
+    });
+  }
+
+  openModal('account');
 }
 
 /* ── ALTERNAR ENTRE LOGIN / CADASTRO ──────────────────────── */

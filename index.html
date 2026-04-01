@@ -270,15 +270,58 @@
   </div>
 </div>
 
-<!-- ══ ACCOUNT MODAL ═════════════════════════════════════════ -->
+<!-- ══ PERFIL MODAL ═══════════════════════════════════════════ -->
 <div class="overlay" id="overlay-account" onclick="closeOnBg(event,'account')">
-  <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal modal-profile" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeModal('account')">&times;</button>
-    <div class="modal-title">Sua conta</div>
-    <div class="account-info">
-      <div class="account-email" id="account-email-display"></div>
-      <p class="account-sync">Seus dados estão sincronizados na nuvem.</p>
+    <div class="modal-title">Meu Perfil</div>
+
+    <!-- Conta -->
+    <div class="profile-section">
+      <div class="profile-avatar" id="profile-avatar">👤</div>
+      <div class="profile-email" id="account-email-display"></div>
+      <div class="profile-sync">☁️ Progresso sincronizado</div>
     </div>
+
+    <!-- Estatísticas -->
+    <div class="profile-label">Desempenho</div>
+    <div class="profile-stats-grid">
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-played">0</span>
+        <span class="profile-stat-lbl">Jogados</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-wins">0%</span>
+        <span class="profile-stat-lbl">Acerto</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-streak">0</span>
+        <span class="profile-stat-lbl">Streak atual</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-best">0</span>
+        <span class="profile-stat-lbl">Melhor streak</span>
+      </div>
+    </div>
+
+    <!-- Streak diário -->
+    <div class="profile-label">Streak Diário</div>
+    <div class="profile-stats-grid profile-stats-grid-2">
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-day-streak">0</span>
+        <span class="profile-stat-lbl">Dias seguidos</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-day-best">0</span>
+        <span class="profile-stat-lbl">Melhor</span>
+      </div>
+    </div>
+    <div id="p-freeze" class="freeze-status available"></div>
+
+    <!-- Conquistas -->
+    <div class="profile-label">Conquistas</div>
+    <div id="p-badges" class="profile-badges"></div>
+
     <button class="login-btn logout-btn" onclick="logout(); closeModal('account');">Sair da conta</button>
   </div>
 </div>
