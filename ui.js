@@ -87,6 +87,11 @@ function renderResult() {
     '<div class="result-divider"></div>' +
     '<div class="result-section-label">Discussão Clínica</div>' +
     '<div class="result-body">' + c.explanation + '</div>' +
+    (c.differentials
+      ? '<div class="result-divider"></div>' +
+        '<div class="result-section-label">Diagnósticos Diferenciais</div>' +
+        '<div class="result-body">' + c.differentials + '</div>'
+      : '') +
     '<div class="result-divider"></div>' +
     '<div class="result-section-label">Referências</div>' +
     '<div class="result-refs">' + c.reference + '</div>' +
@@ -246,6 +251,11 @@ function archiveRenderResult() {
     '<div class="result-divider"></div>' +
     '<div class="result-section-label">Discussão Clínica</div>' +
     '<div class="result-body">' + c.explanation + '</div>' +
+    (c.differentials
+      ? '<div class="result-divider"></div>' +
+        '<div class="result-section-label">Diagnósticos Diferenciais</div>' +
+        '<div class="result-body">' + c.differentials + '</div>'
+      : '') +
     '<div class="result-divider"></div>' +
     '<div class="result-section-label">Referências</div>' +
     '<div class="result-refs">' + c.reference + '</div>';

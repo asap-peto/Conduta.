@@ -427,6 +427,9 @@ function init() {
     document.getElementById('input-wrap').style.display = 'none';
   }
 
+  // Timer countdown
+  startTimer();
+
   // Registra eventos do input principal
   var inp = document.getElementById('diagnosis-input');
   inp.addEventListener('input',   onInput);

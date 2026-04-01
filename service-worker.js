@@ -1,8 +1,10 @@
-var CACHE = 'conduta-v1';
+var CACHE = 'conduta-v2';
 var ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
+  '/storage.js',
+  '/auth.js',
   '/game.js',
   '/ui.js',
   '/cases.js',
