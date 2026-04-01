@@ -1,4 +1,4 @@
-var CACHE = 'conduta-v2';
+var CACHE = 'conduta-v7';
 var ASSETS = [
   '/',
   '/index.html',
@@ -31,8 +31,18 @@ self.addEventListener('activate', function(e) {
   self.clients.claim();
 });
 
+// Network-first: sempre busca do servidor, fallback para cache se offline
 self.addEventListener('fetch', function(e) {
   e.respondWith(
-    caches.match(e.request).then(function(r) { return r || fetch(e.request); })
+    fetch(e.request).then(function(response) {
+      // Atualiza o cache com a resposta fresca
+      if (response.ok) {
+        var clone = response.clone();
+        caches.open(CACHE).then(function(c) { c.put(e.request, clone); });
+      }
+      return response;
+    }).catch(function() {
+      return caches.match(e.request);
+    })
   );
 });
