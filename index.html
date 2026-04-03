@@ -19,8 +19,6 @@
   <meta name="twitter:title"       content="Conduta — Caso Clínico do Dia">
   <meta name="twitter:description" content="Um caso clínico por dia. Quantas tentativas você precisa para chegar à conduta certa?">
   <meta name="twitter:image"       content="https://conduta.cc/og-image.png">
-  <meta property="og:title" content="Conduta · Diagnóstico do dia">
-  <meta property="og:description" content="O jogo diário de diagnóstico médico brasileiro.">
   <meta name="theme-color" content="#260429">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap" rel="stylesheet">
   <link rel="manifest" href="manifest.json">
@@ -255,30 +253,75 @@
 <div class="overlay" id="overlay-login" onclick="closeOnBg(event,'login')">
   <div class="modal" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeModal('login')">&times;</button>
-    <div class="modal-title">Entrar no Conduta</div>
+    <div class="modal-title" id="login-modal-title">Entrar no Conduta</div>
     <p class="login-subtitle">Salve seu progresso em qualquer dispositivo</p>
     <form class="login-form" onsubmit="handleLoginSubmit(event)">
       <input type="email" id="login-email" class="login-input" placeholder="seu@email.com" autocomplete="email" required>
-      <button type="submit" class="login-btn" id="login-submit-btn">Entrar com magic link</button>
+      <input type="password" id="login-password" class="login-input" placeholder="Senha" autocomplete="current-password" required>
+      <button type="submit" class="login-btn" id="login-submit-btn">Entrar</button>
     </form>
     <div class="login-perks">
       <div class="login-perk">🔥 Streak salvo na nuvem</div>
       <div class="login-perk">📊 Histórico completo</div>
       <div class="login-perk">🗺️ Mapa de progresso em breve</div>
     </div>
-    <p class="login-note">Sem senha. Enviamos um link de acesso para seu email.</p>
+    <p class="login-toggle" id="login-toggle">Não tem conta? <a href="#" onclick="setLoginMode('signup'); return false;">Criar conta</a></p>
+    <p class="login-note" id="login-note"></p>
   </div>
 </div>
 
-<!-- ══ ACCOUNT MODAL ═════════════════════════════════════════ -->
+<!-- ══ PERFIL MODAL ═══════════════════════════════════════════ -->
 <div class="overlay" id="overlay-account" onclick="closeOnBg(event,'account')">
-  <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal modal-profile" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeModal('account')">&times;</button>
-    <div class="modal-title">Sua conta</div>
-    <div class="account-info">
-      <div class="account-email" id="account-email-display"></div>
-      <p class="account-sync">Seus dados estão sincronizados na nuvem.</p>
+    <div class="modal-title">Meu Perfil</div>
+
+    <!-- Conta -->
+    <div class="profile-section">
+      <div class="profile-avatar" id="profile-avatar">👤</div>
+      <div class="profile-email" id="account-email-display"></div>
+      <div class="profile-sync">☁️ Progresso sincronizado</div>
     </div>
+
+    <!-- Estatísticas -->
+    <div class="profile-label">Desempenho</div>
+    <div class="profile-stats-grid">
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-played">0</span>
+        <span class="profile-stat-lbl">Jogados</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-wins">0%</span>
+        <span class="profile-stat-lbl">Acerto</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-streak">0</span>
+        <span class="profile-stat-lbl">Streak atual</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-best">0</span>
+        <span class="profile-stat-lbl">Melhor streak</span>
+      </div>
+    </div>
+
+    <!-- Streak diário -->
+    <div class="profile-label">Streak Diário</div>
+    <div class="profile-stats-grid profile-stats-grid-2">
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-day-streak">0</span>
+        <span class="profile-stat-lbl">Dias seguidos</span>
+      </div>
+      <div class="profile-stat">
+        <span class="profile-stat-val" id="p-day-best">0</span>
+        <span class="profile-stat-lbl">Melhor</span>
+      </div>
+    </div>
+    <div id="p-freeze" class="freeze-status available"></div>
+
+    <!-- Conquistas -->
+    <div class="profile-label">Conquistas</div>
+    <div id="p-badges" class="profile-badges"></div>
+
     <button class="login-btn logout-btn" onclick="logout(); closeModal('account');">Sair da conta</button>
   </div>
 </div>
