@@ -19,7 +19,8 @@ try {
 }
 
 /* ── ESTADO DO MODAL ──────────────────────────────────────── */
-var _loginMode = 'login'; // 'login' ou 'signup'
+var _loginMode  = 'login'; // 'login' ou 'signup'
+var userProfile = { username: '' };
 
 /* ── LOGIN (email + senha) ─────────────────────────────────── */
 async function loginWithPassword(email, password) {
@@ -151,12 +152,15 @@ function updateAuthUI() {
   var banner     = document.getElementById('streak-banner');
 
   if (currentUser) {
-    // Logado: mostra badge com email
+    // Logado: mostra badge com nome/email
     if (btnLogin) btnLogin.style.display = 'none';
     if (userBadge) {
       userBadge.style.display = 'flex';
-      var emailEl = document.getElementById('user-email');
-      if (emailEl) emailEl.textContent = currentUser.email;
+      var nameDisplay = _getDisplayName() || currentUser.email.split('@')[0];
+      var emailEl  = document.getElementById('user-email');
+      var avatarEl = document.getElementById('user-avatar-mini');
+      if (emailEl)  emailEl.textContent  = nameDisplay;
+      if (avatarEl) avatarEl.textContent = _getAvatarChar();
     }
     // Esconde banner de streak
     if (banner) banner.style.display = 'none';
@@ -224,6 +228,9 @@ async function reloadStateFromStorage() {
     var g = await loadProgress('conduta_game_' + dayKey());
     if (g) gs = g;
 
+    var p = await loadProgress('conduta_profile');
+    if (p) userProfile = p;
+
     // Re-renderiza tudo
     ensureBadgeFields();
     renderDots();
@@ -247,13 +254,14 @@ function openLoginModal() {
 }
 
 function openProfileModal() {
+  cancelEditUsername();
+
+  // Username e avatar
+  _refreshProfileHeader();
+
   // Email
   var emailDisplay = document.getElementById('account-email-display');
   if (emailDisplay) emailDisplay.textContent = currentUser.email;
-
-  // Iniciais do avatar (primeira letra do email)
-  var avatarEl = document.getElementById('profile-avatar');
-  if (avatarEl) avatarEl.textContent = currentUser.email.charAt(0).toUpperCase();
 
   // Estatísticas de desempenho
   ensureBadgeFields();
@@ -294,6 +302,57 @@ function openProfileModal() {
   }
 
   openModal('account');
+}
+
+/* ── USERNAME: HELPERS ────────────────────────────────────── */
+function _getDisplayName() {
+  return (userProfile && userProfile.username) || '';
+}
+
+function _getAvatarChar() {
+  var name = _getDisplayName();
+  if (name) return name.charAt(0).toUpperCase();
+  return currentUser ? currentUser.email.charAt(0).toUpperCase() : '?';
+}
+
+function _refreshProfileHeader() {
+  var name = _getDisplayName();
+  var avatarEl = document.getElementById('profile-avatar');
+  var nameEl   = document.getElementById('profile-username-display');
+  if (avatarEl) avatarEl.textContent = _getAvatarChar();
+  if (nameEl)   nameEl.textContent   = name || 'Sem nome definido';
+}
+
+/* ── USERNAME: EDITAR / SALVAR ────────────────────────────── */
+function startEditUsername() {
+  document.getElementById('profile-edit-btn').style.display      = 'none';
+  document.getElementById('profile-username-form').style.display = 'block';
+  var inp = document.getElementById('profile-username-input');
+  inp.value = _getDisplayName();
+  inp.focus();
+}
+
+function cancelEditUsername() {
+  var editBtn = document.getElementById('profile-edit-btn');
+  var form    = document.getElementById('profile-username-form');
+  if (editBtn) editBtn.style.display = 'inline-flex';
+  if (form)    form.style.display    = 'none';
+}
+
+function saveUsername() {
+  var inp  = document.getElementById('profile-username-input');
+  var name = inp ? inp.value.trim() : '';
+
+  if (!name) { toast('Digite um nome.'); return; }
+  if (name.length > 30) { toast('Máximo 30 caracteres.'); return; }
+
+  userProfile.username = name;
+  saveProgress('conduta_profile', userProfile);
+
+  cancelEditUsername();
+  _refreshProfileHeader();
+  updateAuthUI();
+  toast('Nome salvo!');
 }
 
 /* ── ALTERNAR ENTRE LOGIN / CADASTRO ──────────────────────── */

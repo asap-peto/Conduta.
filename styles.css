@@ -1210,12 +1210,35 @@ footer {
   display: flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.user-badge:hover {
+  background: var(--bg3);
+}
+
+.user-avatar-mini {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--lilac);
+  color: var(--forest);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .user-email {
-  font-size: 11px;
-  color: var(--muted);
-  max-width: 120px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--white);
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1363,10 +1386,66 @@ footer {
   margin-bottom: 4px;
 }
 
-.profile-email {
-  font-size: 14px;
-  font-weight: 600;
+.profile-username-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.profile-username {
+  font-size: 18px;
+  font-weight: 700;
   color: var(--white);
+  text-align: center;
+}
+
+.profile-edit-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.profile-edit-btn:hover {
+  border-color: var(--lilac);
+  color: var(--lilac);
+}
+
+.profile-username-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.profile-cancel-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  text-align: center;
+  padding: 4px;
+}
+
+.profile-cancel-btn:hover {
+  color: var(--white);
+}
+
+.profile-email {
+  font-size: 12px;
+  color: var(--muted);
   word-break: break-all;
   text-align: center;
 }

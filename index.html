@@ -42,11 +42,9 @@
       <button class="hbtn" onclick="openLoginModal()" id="btn-login" title="Entrar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </button>
-      <div class="user-badge" id="user-badge" style="display:none">
+      <div class="user-badge" id="user-badge" style="display:none" onclick="openLoginModal()" title="Meu perfil">
+        <div class="user-avatar-mini" id="user-avatar-mini">?</div>
         <span class="user-email" id="user-email"></span>
-        <button class="hbtn hbtn-sm" onclick="logout()" title="Sair">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
       </div>
     </div>
   </div>
@@ -276,9 +274,20 @@
     <button class="modal-close" onclick="closeModal('account')">&times;</button>
     <div class="modal-title">Meu Perfil</div>
 
-    <!-- Conta -->
+    <!-- Avatar + nome + email -->
     <div class="profile-section">
-      <div class="profile-avatar" id="profile-avatar">👤</div>
+      <div class="profile-avatar" id="profile-avatar">?</div>
+      <div class="profile-username-wrap">
+        <span class="profile-username" id="profile-username-display"></span>
+        <button class="profile-edit-btn" id="profile-edit-btn" onclick="startEditUsername()">✏️ Editar nome</button>
+      </div>
+      <div id="profile-username-form" style="display:none;width:100%">
+        <div class="profile-username-input-wrap">
+          <input type="text" id="profile-username-input" class="login-input" placeholder="Seu nome ou apelido" maxlength="30" autocomplete="off">
+          <button class="login-btn" style="margin-top:8px" onclick="saveUsername()">Salvar</button>
+          <button class="profile-cancel-btn" onclick="cancelEditUsername()">Cancelar</button>
+        </div>
+      </div>
       <div class="profile-email" id="account-email-display"></div>
       <div class="profile-sync">☁️ Progresso sincronizado</div>
     </div>
