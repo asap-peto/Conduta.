@@ -362,17 +362,51 @@ function setLoginMode(mode) {
   var btn      = document.getElementById('login-submit-btn');
   var toggle   = document.getElementById('login-toggle');
   var noteEl   = document.getElementById('login-note');
+  var forgotEl = document.getElementById('login-forgot');
 
   if (mode === 'signup') {
-    if (title)  title.textContent  = 'Criar conta';
-    if (btn)    btn.textContent    = 'Criar conta';
-    if (toggle) toggle.innerHTML   = 'Já tem conta? <a href="#" onclick="setLoginMode(\'login\'); return false;">Entrar</a>';
-    if (noteEl) noteEl.textContent = 'Mínimo de 6 caracteres na senha.';
+    if (title)    title.textContent  = 'Criar conta';
+    if (btn)      btn.textContent    = 'Criar conta';
+    if (toggle)   toggle.innerHTML   = 'Já tem conta? <a href="#" onclick="setLoginMode(\'login\'); return false;">Entrar</a>';
+    if (noteEl)   noteEl.textContent = 'Mínimo de 6 caracteres na senha.';
+    if (forgotEl) forgotEl.style.display = 'none';
   } else {
-    if (title)  title.textContent  = 'Entrar no Conduta';
-    if (btn)    btn.textContent    = 'Entrar';
-    if (toggle) toggle.innerHTML   = 'Não tem conta? <a href="#" onclick="setLoginMode(\'signup\'); return false;">Criar conta</a>';
-    if (noteEl) noteEl.textContent = '';
+    if (title)    title.textContent  = 'Entrar no Conduta';
+    if (btn)      btn.textContent    = 'Entrar';
+    if (toggle)   toggle.innerHTML   = 'Não tem conta? <a href="#" onclick="setLoginMode(\'signup\'); return false;">Criar conta</a>';
+    if (noteEl)   noteEl.textContent = '';
+    if (forgotEl) forgotEl.style.display = 'block';
+  }
+}
+
+/* ── ESQUECI MINHA SENHA ───────────────────────────────────── */
+async function handleForgotPassword() {
+  var emailInput = document.getElementById('login-email');
+  var email      = emailInput ? emailInput.value.trim() : '';
+
+  if (!email || email.indexOf('@') === -1) {
+    toast('Digite seu email primeiro.');
+    if (emailInput) emailInput.focus();
+    return;
+  }
+
+  if (!_supabase) {
+    toast('Erro de conexão. Tente novamente.');
+    return;
+  }
+
+  try {
+    var res = await _supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://conduta.cc/'
+    });
+
+    if (res.error) {
+      toast('Erro ao enviar. Verifique o email.');
+    } else {
+      toast('Email de redefinição enviado!');
+    }
+  } catch (e) {
+    toast('Erro de conexão. Tente novamente.');
   }
 }
 

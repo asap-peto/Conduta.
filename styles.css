@@ -1362,6 +1362,22 @@ footer {
   text-decoration: underline;
 }
 
+.login-forgot {
+  font-size: 12px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.login-forgot a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.login-forgot a:hover {
+  color: var(--lilac);
+  text-decoration: underline;
+}
+
 /* ── AUTH: ACCOUNT MODAL ───────────────────────────────────── */
 /* ── PERFIL MODAL ───────────────────────────────────────────── */
 .modal-profile {
