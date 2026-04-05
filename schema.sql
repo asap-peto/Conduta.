@@ -21,3 +21,25 @@ USING (auth.uid() = user_id);
 
 -- Índice para busca rápida por user_id + key
 CREATE INDEX idx_user_progress_user_key ON user_progress(user_id, key);
+
+-- ============================================================
+-- Tabela de leads (captura após 1º caso concluído)
+-- ============================================================
+
+CREATE TABLE leads (
+  id            uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  email         text        NOT NULL,
+  faculdade     text,
+  ano_formatura integer,
+  created_at    timestamptz DEFAULT now()
+);
+
+-- Acesso público para insert (anon key), sem leitura pública
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Qualquer um pode enviar lead"
+ON leads FOR INSERT
+WITH CHECK (true);
+
+-- Índice para evitar emails duplicados na análise
+CREATE INDEX idx_leads_email ON leads(email);

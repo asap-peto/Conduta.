@@ -249,6 +249,10 @@ function submitGuess() {
       renderResult();
       document.getElementById('input-wrap').style.display = 'none';
     }, 400);
+    // Captura de lead após o 1º caso concluído (vitória ou derrota)
+    if (stats.played === 1) {
+      maybeShowLeadModal();
+    }
   }
 
   saveState();

@@ -9,6 +9,7 @@ var ASSETS = [
   '/ui.js',
   '/cases.js',
   '/badges.js',
+  '/leads.js',
   '/manifest.json',
   '/Conduta_mini_logo.svg'
 ];

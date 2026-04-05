@@ -336,6 +336,22 @@
   </div>
 </div>
 
+<!-- ══ LEAD MODAL ════════════════════════════════════════════ -->
+<div class="overlay" id="overlay-lead" onclick="closeOnBg(event,'lead')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeLeadModal()">&times;</button>
+    <div class="modal-title">Parabéns pelo caso! 🩺</div>
+    <p class="login-subtitle">Ajude a melhorar o Conduta respondendo rapidamente:</p>
+    <form class="login-form" onsubmit="submitLead(event)">
+      <input type="email"  id="lead-email"     class="login-input" placeholder="seu@email.com"        autocomplete="email" required>
+      <input type="text"   id="lead-faculdade"  class="login-input" placeholder="Faculdade (opcional)" autocomplete="off">
+      <input type="number" id="lead-ano"        class="login-input" placeholder="Ano de formatura (opcional)" min="1990" max="2040" autocomplete="off">
+      <button type="submit" class="login-btn" id="lead-submit-btn">Enviar</button>
+    </form>
+    <p class="login-note">Seus dados não serão compartilhados. Usamos apenas para entender nossos usuários.</p>
+  </div>
+</div>
+
 <!-- ══ TOAST ══════════════════════════════════════════════════ -->
 <div class="toast" id="toast"></div>
 
@@ -357,6 +373,7 @@
 <script src="ui.js?v=6"></script>
 <script src="game.js?v=6"></script>
 <script src="badges.js?v=6"></script>
+<script src="leads.js?v=1"></script>
 
 </body>
 </html>
