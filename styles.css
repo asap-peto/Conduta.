@@ -527,6 +527,21 @@ ul     { list-style: none; }
 .today-art.mode-plantao   { color: var(--cyan); }
 .today-art.mode-casoraro  { color: var(--error); }
 .today-art.mode-prescricao{ color: var(--purple); }
+.case-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.22));
+}
+.case-emoji.lg { font-size: 42px; }
+.case-emoji.md { font-size: 34px; }
+.case-emoji.node { font-size: 34px; }
+.case-emoji.inline {
+  font-size: 20px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
 .today-head { flex: 1; min-width: 0; }
 .today-kicker {
   font-size: 11px;

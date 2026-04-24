@@ -1,17 +1,24 @@
-var CACHE = 'conduta-v28';
+var CACHE = 'conduta-cache';
 var ASSETS = [
   './',
   './index.html',
-  './styles.css?v=19',
-  './storage.js?v=10',
-  './icons.js?v=10',
-  './auth.js?v=13',
-  './levels.js?v=9',
-  './levels-data.js?v=2',
-  './gamification.js?v=12',
-  './ui.js?v=27',
-  './game.js?v=15',
-  './register-sw.js?v=24',
+  './styles.css',
+  './storage.js',
+  './icons.js',
+  './auth.js',
+  './levels.js',
+  './levels-data.js',
+  './gamification.js',
+  './ui-state.js',
+  './ui-shell.js',
+  './ui-onboarding.js',
+  './ui-home.js',
+  './ui-league.js',
+  './ui-progress.js',
+  './ui-profile.js',
+  './ui.js',
+  './game.js',
+  './register-sw.js',
   './manifest.json',
   './Conduta_mini_logo.svg'
 ];
@@ -43,9 +50,16 @@ self.addEventListener('message', function(e) {
 self.addEventListener('fetch', function(e) {
   if (e.request.method !== 'GET') return;
 
+  var reqUrl = new URL(e.request.url);
+  if (reqUrl.origin !== self.location.origin) return;
+
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).catch(function() {
+      fetch(e.request).then(function(response) {
+        var copy = response.clone();
+        caches.open(CACHE).then(function(c) { c.put('./index.html', copy); });
+        return response;
+      }).catch(function() {
         return caches.match('./index.html');
       })
     );
@@ -53,6 +67,12 @@ self.addEventListener('fetch', function(e) {
   }
 
   e.respondWith(
-    caches.match(e.request).then(function(r) { return r || fetch(e.request); })
+    fetch(e.request).then(function(response) {
+      var copy = response.clone();
+      caches.open(CACHE).then(function(c) { c.put(e.request, copy); });
+      return response;
+    }).catch(function() {
+      return caches.match(e.request);
+    })
   );
 });

@@ -17,6 +17,7 @@ window.CONDUTA_LEVEL_CHUNKS.push(
   dayOfWeek: 1, // segunda
   mode: 'classica',
   title: 'Dor Torácica no PS',
+  emoji: '🫀',
   specialty: 'Cardiologia',
   difficulty: 1,
   estimatedMinutes: 2,
@@ -98,15 +99,16 @@ window.CONDUTA_LEVEL_CHUNKS.push(
 },
 
 /* ═══════════════════════════════════════════════════════════
-   NÍVEL 2 — TERÇA — DIA DA IMAGEM
+   NÍVEL 7 — DOMINGO — DIA DA IMAGEM
    5 imagens rápidas. Dificuldade: ⭐ Fácil.
    ═══════════════════════════════════════════════════════════ */
 {
   id: 2,
-  number: 2,
-  dayOfWeek: 2, // terça
+  number: 7,
+  dayOfWeek: 0, // domingo
   mode: 'imagem',
   title: 'Dia da Imagem',
+  emoji: '🩻',
   specialty: 'Multi-especialidade',
   difficulty: 1,
   estimatedMinutes: 2,
@@ -199,6 +201,7 @@ window.CONDUTA_LEVEL_CHUNKS.push(
   dayOfWeek: 3, // quarta
   mode: 'classica',
   title: 'Crise Asmática Grave',
+  emoji: '🫁',
   specialty: 'Pneumologia',
   difficulty: 2,
   estimatedMinutes: 3,
@@ -290,6 +293,7 @@ window.CONDUTA_LEVEL_CHUNKS.push(
   dayOfWeek: 4, // quinta
   mode: 'triagem',
   title: 'Triagem na Porta',
+  emoji: '🚑',
   specialty: 'Emergência',
   difficulty: 2,
   estimatedMinutes: 3,
@@ -362,6 +366,7 @@ window.CONDUTA_LEVEL_CHUNKS.push(
   dayOfWeek: 5, // sexta
   mode: 'rapidfire',
   title: 'Rapid Fire: Farmacologia',
+  emoji: '💊',
   specialty: 'Farmacologia · Vitais',
   difficulty: 1,
   estimatedMinutes: 1,
@@ -441,6 +446,7 @@ window.CONDUTA_LEVEL_CHUNKS.push(
   dayOfWeek: 6, // sábado
   mode: 'plantao',
   title: 'Plantão: O Idoso Confuso',
+  emoji: '🧠',
   specialty: 'Endocrinologia · Neurologia',
   difficulty: 3,
   estimatedMinutes: 6,
@@ -531,15 +537,16 @@ window.CONDUTA_LEVEL_CHUNKS.push(
 },
 
 /* ═══════════════════════════════════════════════════════════
-   NÍVEL 7 — DOMINGO — CASO RARO
+   NÍVEL 2 — TERÇA — CASO RARO
    Tema: Takotsubo. Dificuldade: 💀 Expert.
    ═══════════════════════════════════════════════════════════ */
 {
   id: 7,
-  number: 7,
-  dayOfWeek: 0, // domingo
+  number: 2,
+  dayOfWeek: 2, // terça
   mode: 'casoraro',
   title: 'O Coração Quebrado',
+  emoji: '💔',
   specialty: 'Cardiologia',
   difficulty: 4,
   estimatedMinutes: 4,

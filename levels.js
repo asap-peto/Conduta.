@@ -21,7 +21,17 @@ const DIFFICULTY = {
   4: { starsN: 4, label: 'Expert',   xpMult: 2.2, get stars(){ return starIcons(4); } }
 };
 
-const LEVEL_DATA_FILES = ['levels-data.js?v=2'];
+const LEVEL_DATA_FILES = ['levels-data.js'];
+
+const MODE_EMOJIS = {
+  classica: '🩺',
+  imagem: '🩻',
+  triagem: '🚑',
+  rapidfire: '💊',
+  plantao: '🌙',
+  casoraro: '💔',
+  prescricao: '💊'
+};
 
 function starIcons(n) {
   if (typeof window === 'undefined' || typeof window.icon !== 'function') return '★'.repeat(n);
@@ -104,6 +114,15 @@ function getLevelByNumber(n) {
   return LEVELS.find(l => l.number === n);
 }
 
+function levelEmoji(level) {
+  if (!level) return '🩺';
+  return level.emoji || MODE_EMOJIS[level.mode] || '🩺';
+}
+
+function levelEmojiHtml(level, className) {
+  return `<span class="${className || 'case-emoji'}" aria-hidden="true">${levelEmoji(level)}</span>`;
+}
+
 const WEEKDAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAY_FULL  = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -112,8 +131,11 @@ window.MODES = MODES;
 window.DIFFICULTY = DIFFICULTY;
 window.TOTAL_LEVELS = TOTAL_LEVELS;
 window.LEVEL_DATA_FILES = LEVEL_DATA_FILES;
+window.MODE_EMOJIS = MODE_EMOJIS;
 window.ensureLevelsLoaded = ensureLevelsLoaded;
 window.getLevel = getLevel;
 window.getLevelByNumber = getLevelByNumber;
+window.levelEmoji = levelEmoji;
+window.levelEmojiHtml = levelEmojiHtml;
 window.WEEKDAY_NAMES = WEEKDAY_NAMES;
 window.WEEKDAY_FULL = WEEKDAY_FULL;

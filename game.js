@@ -293,7 +293,7 @@ function renderClassica() {
   const { level, step } = playSession;
   const body = document.getElementById('play-body');
   const footer = document.getElementById('play-footer');
-  const modeIcon = icon(MODES[level.mode].icon, 20, 'icn-inline');
+  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
 
   // Primeira tela: mostra o caso
   if (step === 0 && !playSession.subStates.caseShown) {
@@ -557,7 +557,7 @@ function renderImagem() {
   const img = level.images[step];
   const body = document.getElementById('play-body');
   const footer = document.getElementById('play-footer');
-  const modeIcon = icon(MODES[level.mode].icon, 20, 'icn-inline');
+  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
   playSession.subStates.imgSel = null;
   playSession.subStates.imgAnswered = false;
 
@@ -632,7 +632,7 @@ function renderTriagem() {
   const p = level.patients[step];
   const body = document.getElementById('play-body');
   const footer = document.getElementById('play-footer');
-  const modeIcon = icon(MODES[level.mode].icon, 20, 'icn-inline');
+  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
 
   playSession.subStates.trSel = null;
   playSession.subStates.trAnswered = false;
@@ -779,7 +779,7 @@ function renderPlantao() {
   const s = level.steps[step];
   const body = document.getElementById('play-body');
   const footer = document.getElementById('play-footer');
-  const modeIcon = icon(MODES[level.mode].icon, 20, 'icn-inline');
+  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
   playSession.subStates.plSel = null;
   playSession.subStates.plAnswered = false;
 
@@ -884,7 +884,7 @@ function finishLevel() {
   clearPlayAsyncTasks(playSession);
   const { level, correctCount, totalCount, comboMax, heartsUsed, startTime } = playSession;
   const perfect = correctCount === totalCount && totalCount > 0;
-  const firstOfDay = !player.levelsCompleted.some(c => c.completedAt && c.completedAt.slice(0,10) === todayKey());
+  const firstOfDay = !hasCompletionOnDay(todayKey());
   const diffMult = DIFFICULTY[level.difficulty]?.xpMult || 1;
 
   const xpGained = awardLevelXp({
