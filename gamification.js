@@ -25,6 +25,9 @@ const GEMS = {
   heartRefillCost: 350
 };
 
+// Primeiro dia da temporada beta. A virada usa o calendário local do navegador.
+const SEASON_START_LOCAL_DATE = '2026-04-23';
+
 const LEAGUES = [
   { id: 'bronze',    name: 'Bronze',    emoji: '🥉', minXp: 0 },
   { id: 'prata',     name: 'Prata',     emoji: '🥈', minXp: 200 },
@@ -81,18 +84,46 @@ function defaultPlayer() {
 var player = defaultPlayer();
 
 // ── HELPERS DE DATA ───────────────────────────────────────
-function todayKey() {
-  const d = new Date();
+function localDateKey(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = value ? new Date(value) : new Date();
+  if (Number.isNaN(d.getTime())) return null;
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
+function todayKey() {
+  return localDateKey();
+}
+
 function daysBetween(a, b) {
   if (!a || !b) return 0;
   const ms = new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00');
   return Math.round(ms / 86400000);
+}
+
+function completionDayKey(completion) {
+  if (!completion || !completion.completedAt) return null;
+  return localDateKey(completion.completedAt);
+}
+
+function completedOnDay(completion, dayKey) {
+  return completionDayKey(completion) === dayKey;
+}
+
+function hasCompletionOnDay(dayKey) {
+  return player.levelsCompleted.some(c => completedOnDay(c, dayKey));
+}
+
+function dailyUnlockedLevelNumber(dayKey) {
+  const daysSinceStart = daysBetween(SEASON_START_LOCAL_DATE, dayKey || todayKey());
+  return Math.max(1, Math.min(TOTAL_LEVELS + 1, daysSinceStart + 1));
+}
+
+function unlockedLevelNumber() {
+  return Math.max(player.currentLevel || 1, dailyUnlockedLevelNumber());
 }
 
 // Início da semana (segunda-feira) para a liga
@@ -102,7 +133,7 @@ function weekStart() {
   const diff = (day === 0 ? -6 : 1 - day);
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString().slice(0, 10);
+  return localDateKey(d);
 }
 
 function syncLeagueWeek() {
@@ -299,7 +330,7 @@ function addGems(amount) {
 function canPlayLevel(levelId) {
   const level = getLevel(levelId);
   if (!level) return { ok: false, reason: 'not-found' };
-  if (level.number > player.currentLevel) {
+  if (level.number > unlockedLevelNumber()) {
     return { ok: false, reason: 'locked' };
   }
 
@@ -310,10 +341,8 @@ function canPlayLevel(levelId) {
 
   // Se for o nível atual e já jogou outro hoje, precisa de pro
   if (!player.isPro) {
-    const playedToday = player.levelsCompleted.some(
-      c => c.completedAt && c.completedAt.slice(0, 10) === todayKey()
-    );
-    if (playedToday && level.number === player.currentLevel) {
+    const playedToday = hasCompletionOnDay(todayKey());
+    if (playedToday) {
       return { ok: false, reason: 'daily-limit' };
     }
   }
@@ -322,8 +351,8 @@ function canPlayLevel(levelId) {
 }
 
 function todaysLevel() {
-  // O "nível de hoje" é o currentLevel (próximo a completar).
-  return getLevelByNumber(player.currentLevel);
+  // O "nível de hoje" acompanha a virada local do navegador, não só progresso.
+  return getLevelByNumber(dailyUnlockedLevelNumber());
 }
 
 function markLevelComplete(levelId, payload) {
@@ -351,8 +380,8 @@ function markLevelComplete(levelId, payload) {
   }
   // Avança currentLevel se ainda não passou desse nível
   const level = getLevel(levelId);
-  if (level && level.number === player.currentLevel) {
-    player.currentLevel = Math.min(TOTAL_LEVELS + 1, player.currentLevel + 1);
+  if (level) {
+    player.currentLevel = Math.min(TOTAL_LEVELS + 1, Math.max(player.currentLevel || 1, level.number + 1));
   }
   return record;
 }
@@ -685,6 +714,11 @@ window.canPlayLevel = canPlayLevel;
 window.todaysLevel = todaysLevel;
 window.markLevelComplete = markLevelComplete;
 window.todayKey = todayKey;
+window.localDateKey = localDateKey;
+window.completedOnDay = completedOnDay;
+window.hasCompletionOnDay = hasCompletionOnDay;
+window.dailyUnlockedLevelNumber = dailyUnlockedLevelNumber;
+window.unlockedLevelNumber = unlockedLevelNumber;
 window.updateLeague = updateLeague;
 window.getLeagueInfo = getLeagueInfo;
 window.mockLeagueParticipants = mockLeagueParticipants;

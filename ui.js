@@ -1,19 +1,7 @@
 /* ============================================================
-   ui-state.js — Conduta.
-   Estado compartilhado entre módulos de UI.
-   ============================================================ */
-
-var onbState = { step: 0, sampleAnswer: null };
-var homeSelectedLevelId = null;
-var leagueComposerOpen = false; // legado — mantém compat
-var leagueModalMode = null; // 'create' | 'join' | 'edit' | null
-var leagueEditingLeagueId = null;
-var leagueRequestsOpen = false;
-var profileSettingsOpen = false;
-
-/* ============================================================
-   ui-shell.js — Conduta.
-   Header e elementos globais de interface.
+   ui.js — Conduta.
+   Renderização das views: header stats, onboarding, home,
+   level map, league, quests, complete, profile, SVGs médicos.
    ============================================================ */
 
 // ══════════════════════════════════════════════════════════
@@ -46,14 +34,17 @@ function renderHeaderStats() {
   `;
 }
 
-/* ============================================================
-   ui-onboarding.js — Conduta.
-   Fluxo de onboarding.
-   ============================================================ */
-
 // ══════════════════════════════════════════════════════════
 // ONBOARDING
 // ══════════════════════════════════════════════════════════
+let onbState = { step: 0, sampleAnswer: null };
+let homeSelectedLevelId = null;
+let leagueComposerOpen = false; // legado — mantém compat
+let leagueModalMode = null; // 'create' | 'join' | 'edit' | null
+let leagueEditingLeagueId = null;
+let leagueRequestsOpen = false;
+let profileSettingsOpen = false;
+
 function renderOnboarding() {
   const view = document.getElementById('view-onboarding');
   onbState = { step: 0, sampleAnswer: null };
@@ -228,11 +219,6 @@ function finishOnboarding() {
   // Vai direto para o primeiro nível
   startLevel(1);
 }
-
-/* ============================================================
-   ui-home.js — Conduta.
-   Home, hero, mapa de níveis e card diário.
-   ============================================================ */
 
 // ══════════════════════════════════════════════════════════
 // HOME — LEVEL MAP
@@ -649,11 +635,6 @@ function openPastLevel(levelId) {
   `;
   modal.style.display = 'flex';
 }
-
-/* ============================================================
-   ui-league.js — Conduta.
-   Liga privada, catálogo, convites e ranking.
-   ============================================================ */
 
 // ══════════════════════════════════════════════════════════
 // LIGA
@@ -1190,11 +1171,6 @@ function renderMembershipCard(membership, state) {
   `;
 }
 
-/* ============================================================
-   ui-progress.js — Conduta.
-   Missões e tela de conclusão de nível.
-   ============================================================ */
-
 // ══════════════════════════════════════════════════════════
 // QUESTS (MISSÕES)
 // ══════════════════════════════════════════════════════════
@@ -1321,11 +1297,6 @@ function renderComplete({ level, correctCount, totalCount, perfect, xpGained, ge
     </div>
   `;
 }
-
-/* ============================================================
-   ui-profile.js — Conduta.
-   Perfil, ajustes e SVGs médicos.
-   ============================================================ */
 
 // ══════════════════════════════════════════════════════════
 // PROFILE
@@ -1562,11 +1533,6 @@ function renderMedicalSvg(name) {
 }
 
 // Exposições globais
-
-/* ============================================================
-   ui.js — Conduta.
-   Compatibilidade: expõe os módulos de UI no escopo global.
-   ============================================================ */
 
 window.renderHeaderStats = renderHeaderStats;
 window.renderOnboarding = renderOnboarding;

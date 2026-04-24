@@ -1,30 +1,24 @@
-var CACHE = 'conduta-cache';
+var CACHE = 'conduta-v32';
 var ASSETS = [
   './',
   './index.html',
-  './styles.css',
-  './storage.js',
-  './icons.js',
-  './auth.js',
-  './levels.js',
-  './levels-data.js',
-  './gamification.js',
-  './ui.js',
-  './game.js',
-  './register-sw.js',
+  './styles.css?v=20',
+  './storage.js?v=10',
+  './icons.js?v=10',
+  './auth.js?v=13',
+  './levels.js?v=11',
+  './levels-data.js?v=4',
+  './gamification.js?v=13',
+  './ui.js?v=29',
+  './game.js?v=17',
+  './register-sw.js?v=25',
   './manifest.json',
   './Conduta_mini_logo.svg'
 ];
 
 self.addEventListener('install', function(e) {
   e.waitUntil(
-    caches.open(CACHE).then(function(c) {
-      return Promise.all(ASSETS.map(function(asset) {
-        return c.add(asset).catch(function(err) {
-          console.warn('Falha ao colocar asset no cache:', asset, err);
-        });
-      }));
-    })
+    caches.open(CACHE).then(function(c) { return c.addAll(ASSETS); })
   );
   self.skipWaiting();
 });
@@ -49,16 +43,9 @@ self.addEventListener('message', function(e) {
 self.addEventListener('fetch', function(e) {
   if (e.request.method !== 'GET') return;
 
-  var reqUrl = new URL(e.request.url);
-  if (reqUrl.origin !== self.location.origin) return;
-
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).then(function(response) {
-        var copy = response.clone();
-        caches.open(CACHE).then(function(c) { c.put('./index.html', copy); });
-        return response;
-      }).catch(function() {
+      fetch(e.request).catch(function() {
         return caches.match('./index.html');
       })
     );
@@ -66,12 +53,6 @@ self.addEventListener('fetch', function(e) {
   }
 
   e.respondWith(
-    fetch(e.request).then(function(response) {
-      var copy = response.clone();
-      caches.open(CACHE).then(function(c) { c.put(e.request, copy); });
-      return response;
-    }).catch(function() {
-      return caches.match(e.request);
-    })
+    caches.match(e.request).then(function(r) { return r || fetch(e.request); })
   );
 });

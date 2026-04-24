@@ -21,7 +21,7 @@ const DIFFICULTY = {
   4: { starsN: 4, label: 'Expert',   xpMult: 2.2, get stars(){ return starIcons(4); } }
 };
 
-const LEVEL_DATA_FILES = ['levels-data.js'];
+const LEVEL_DATA_FILES = ['levels-data.js?v=4'];
 
 const MODE_EMOJIS = {
   classica: '🩺',
