@@ -25,7 +25,13 @@ var ASSETS = [
 
 self.addEventListener('install', function(e) {
   e.waitUntil(
-    caches.open(CACHE).then(function(c) { return c.addAll(ASSETS); })
+    caches.open(CACHE).then(function(c) {
+      return Promise.all(ASSETS.map(function(asset) {
+        return c.add(asset).catch(function(err) {
+          console.warn('Falha ao colocar asset no cache:', asset, err);
+        });
+      }));
+    })
   );
   self.skipWaiting();
 });
