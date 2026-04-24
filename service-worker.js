@@ -1,16 +1,19 @@
-var CACHE = 'conduta-v7';
+var CACHE = 'conduta-v16';
 var ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/storage.js',
-  '/auth.js',
-  '/game.js',
-  '/ui.js',
-  '/cases.js',
-  '/badges.js',
-  '/manifest.json',
-  '/Conduta_mini_logo.svg'
+  './',
+  './index.html',
+  './styles.css?v=15',
+  './storage.js?v=8',
+  './icons.js?v=8',
+  './auth.js?v=9',
+  './levels.js?v=9',
+  './levels-data.js?v=2',
+  './gamification.js?v=11',
+  './ui.js?v=19',
+  './game.js?v=11',
+  './register-sw.js?v=12',
+  './manifest.json',
+  './Conduta_mini_logo.svg'
 ];
 
 self.addEventListener('install', function(e) {
@@ -31,18 +34,25 @@ self.addEventListener('activate', function(e) {
   self.clients.claim();
 });
 
-// Network-first: sempre busca do servidor, fallback para cache se offline
+self.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', function(e) {
+  if (e.request.method !== 'GET') return;
+
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).catch(function() {
+        return caches.match('./index.html');
+      })
+    );
+    return;
+  }
+
   e.respondWith(
-    fetch(e.request).then(function(response) {
-      // Atualiza o cache com a resposta fresca
-      if (response.ok) {
-        var clone = response.clone();
-        caches.open(CACHE).then(function(c) { c.put(e.request, clone); });
-      }
-      return response;
-    }).catch(function() {
-      return caches.match(e.request);
-    })
+    caches.match(e.request).then(function(r) { return r || fetch(e.request); })
   );
 });

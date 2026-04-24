@@ -1,6 +1,6 @@
 /* ============================================================
    auth.js — Conduta.
-   Autenticação via Supabase (email + senha).
+   Autenticação via Supabase (magic link).
    Depende de: storage.js (currentUser, _supabase, saveProgress)
                supabase-js CDN carregado antes
    ============================================================ */
@@ -8,6 +8,7 @@
 /* ── CONFIGURAÇÃO DO SUPABASE ──────────────────────────────── */
 var SUPABASE_URL      = 'https://mxsraulcvabarpaxealh.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14c3JhdWxjdmFiYXJwYXhlYWxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTQ0ODQsImV4cCI6MjA5MDU3MDQ4NH0.UTkENx_TFnNXxjOV-jF03JYziliQcZyQmk5Cd1iEh3I';
+var APP_BASE_URL      = window.CONDUTA_APP_URL || 'https://conduta.cc/';
 
 // Inicializa cliente — protege contra CDN não carregado
 try {
@@ -18,71 +19,146 @@ try {
   _supabase = null;
 }
 
-/* ── ESTADO DO MODAL ──────────────────────────────────────── */
-var _loginMode  = 'login'; // 'login' ou 'signup'
-var userProfile = { username: '' };
+function authRedirectUrl() {
+  if (window.location.protocol === 'https:' || window.location.protocol === 'http:') {
+    return window.location.origin + window.location.pathname;
+  }
+  return APP_BASE_URL;
+}
 
-/* ── LOGIN (email + senha) ─────────────────────────────────── */
-async function loginWithPassword(email, password) {
-  if (!_supabase) {
-    toast('Erro de conexão. Tente novamente mais tarde.');
-    return false;
+function authCanRunHere() {
+  return window.location.protocol === 'https:' ||
+    (window.location.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(window.location.hostname));
+}
+
+function applyLoggedOutState() {
+  currentUser = null;
+
+  if (typeof setPlayer === 'function') {
+    setPlayer(loadProgressSync('conduta_player_v2'));
+    if (typeof syncLeagueWeek === 'function') syncLeagueWeek();
+    if (typeof refreshHearts === 'function') refreshHearts();
   }
 
-  try {
-    var res = await _supabase.auth.signInWithPassword({
-      email: email,
-      password: password
-    });
+  updateAuthUI();
+  setAuthStatus('', '');
 
-    if (res.error) {
-      toast(res.error.message === 'Invalid login credentials'
-        ? 'Email ou senha incorretos.'
-        : res.error.message);
-      return false;
+  if (typeof player !== 'undefined') {
+    if (player.onboarded && typeof goHome === 'function') {
+      goHome();
+    } else if (typeof showView === 'function' && typeof renderOnboarding === 'function') {
+      showView('onboarding');
+      renderOnboarding();
     }
-
-    return true;
-  } catch (e) {
-    toast('Erro de conexão. Tente novamente.');
-    return false;
   }
 }
 
-/* ── CADASTRO (email + senha) ──────────────────────────────── */
-async function signUpWithPassword(email, password) {
+function setAuthStatus(message, tone) {
+  const el = document.getElementById('auth-status');
+  if (!el) return;
+  if (!message) {
+    el.style.display = 'none';
+    el.textContent = '';
+    el.className = 'auth-status';
+    return;
+  }
+  el.style.display = 'block';
+  el.textContent = message;
+  el.className = 'auth-status' + (tone ? ' ' + tone : '');
+}
+
+function setAuthButtonsDisabled(disabled) {
+  const ids = ['lg-submit', 'login-submit-btn'];
+  ids.forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !!disabled;
+  });
+  const googleBtn = document.querySelector('.btn-google');
+  if (googleBtn) googleBtn.disabled = !!disabled;
+}
+
+function refreshAuthModalState() {
+  if (!authCanRunHere()) {
+    setAuthButtonsDisabled(true);
+    setAuthStatus('Login funciona no app publicado em https ou em localhost. Evite usar file:// para autenticação.', 'warn');
+    return;
+  }
+  if (!_supabase) {
+    setAuthButtonsDisabled(true);
+    setAuthStatus('Login indisponível no momento. Recarregue a página e tente novamente.', 'warn');
+    return;
+  }
+  setAuthButtonsDisabled(false);
+  setAuthStatus('', '');
+}
+
+/* ── GOOGLE OAUTH ──────────────────────────────────────────── */
+async function loginWithGoogle() {
+  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para entrar.'); return; }
+  if (!_supabase) { toast('Erro de conexão.'); return; }
+  try {
+    const { error } = await _supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: authRedirectUrl() }
+    });
+    if (error) toast('Erro ao iniciar login com Google.');
+  } catch (e) {
+    toast('Erro de conexão.');
+  }
+}
+
+/* ── EMAIL + SENHA ─────────────────────────────────────────── */
+async function loginEmailPassword(email, password) {
+  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para entrar.'); return false; }
+  if (!_supabase) { toast('Erro de conexão.'); return false; }
+  const { error } = await _supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    if (/invalid/i.test(error.message)) toast('Email ou senha incorretos.');
+    else toast(error.message);
+    return false;
+  }
+  return true;
+}
+
+async function signupEmailPassword(email, password) {
+  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para criar conta.'); return false; }
+  if (!_supabase) { toast('Erro de conexão.'); return false; }
+  const { data, error } = await _supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: authRedirectUrl() }
+  });
+  if (error) { toast(error.message); return false; }
+  if (data?.session) { toast('Conta criada!'); return true; }
+  toast('Enviamos um link de confirmação pro seu email.');
+  return true;
+}
+
+/* ── ENVIAR MAGIC LINK ─────────────────────────────────────── */
+async function sendMagicLink(email) {
+  if (!authCanRunHere()) {
+    toast('Abra o app em https ou localhost para receber magic link.');
+    return false;
+  }
   if (!_supabase) {
     toast('Erro de conexão. Tente novamente mais tarde.');
     return false;
   }
 
-  if (password.length < 6) {
-    toast('A senha deve ter no mínimo 6 caracteres.');
-    return false;
-  }
-
   try {
-    var res = await _supabase.auth.signUp({
+    var res = await _supabase.auth.signInWithOtp({
       email: email,
-      password: password
+      options: {
+        emailRedirectTo: authRedirectUrl()
+      }
     });
 
     if (res.error) {
-      if (res.error.message.includes('already registered')) {
-        toast('Este email já está cadastrado. Faça login.');
-      } else {
-        toast(res.error.message);
-      }
+      toast('Erro ao enviar link. Verifique o email.');
       return false;
     }
 
-    // Supabase pode exigir confirmação de email
-    if (res.data.user && !res.data.session) {
-      toast('Conta criada! Verifique seu email para confirmar.');
-      return 'confirm';
-    }
-
-    toast('Conta criada com sucesso!');
+    toast('Link enviado para seu email!');
     return true;
   } catch (e) {
     toast('Erro de conexão. Tente novamente.');
@@ -92,14 +168,11 @@ async function signUpWithPassword(email, password) {
 
 /* ── LOGOUT ────────────────────────────────────────────────── */
 async function logout() {
-  if (!_supabase) return;
-
   try {
-    await _supabase.auth.signOut();
+    if (_supabase) await _supabase.auth.signOut();
   } catch (e) {}
 
-  currentUser = null;
-  updateAuthUI();
+  applyLoggedOutState();
   toast('Você saiu da conta.');
 }
 
@@ -147,49 +220,9 @@ async function migrateLocalToSupabase(user) {
 
 /* ── ATUALIZAR UI DE AUTH ──────────────────────────────────── */
 function updateAuthUI() {
-  var btnLogin   = document.getElementById('btn-login');
-  var userBadge  = document.getElementById('user-badge');
-  var banner     = document.getElementById('streak-banner');
-
-  if (currentUser) {
-    // Logado: mostra badge com nome/email
-    if (btnLogin) btnLogin.style.display = 'none';
-    if (userBadge) {
-      userBadge.style.display = 'flex';
-      var nameDisplay = _getDisplayName() || currentUser.email.split('@')[0];
-      var emailEl  = document.getElementById('user-email');
-      var avatarEl = document.getElementById('user-avatar-mini');
-      if (emailEl)  emailEl.textContent  = nameDisplay;
-      if (avatarEl) avatarEl.textContent = _getAvatarChar();
-    }
-    // Esconde banner de streak
-    if (banner) banner.style.display = 'none';
-  } else {
-    // Deslogado: mostra botão de login
-    if (btnLogin) btnLogin.style.display = 'flex';
-    if (userBadge) userBadge.style.display = 'none';
-    // Mostra banner se streak >= 3
-    showStreakBannerIfNeeded();
-  }
-}
-
-/* ── BANNER DE STREAK ──────────────────────────────────────── */
-function showStreakBannerIfNeeded() {
-  var banner = document.getElementById('streak-banner');
-  if (!banner || currentUser) return;
-
-  // Carrega stats do localStorage para checar streak
-  try {
-    var s = JSON.parse(localStorage.getItem('conduta_stats'));
-    if (s && s.dayStreak >= 3) {
-      document.getElementById('streak-banner-text').textContent =
-        'Seu streak de ' + s.dayStreak + ' dias não está salvo. Faça login para não perder.';
-      banner.style.display = 'flex';
-    } else {
-      banner.style.display = 'none';
-    }
-  } catch (e) {
-    banner.style.display = 'none';
+  // Header/avatar são atualizados por renderHeaderStats().
+  if (typeof renderHeaderStats === 'function') {
+    try { renderHeaderStats(); } catch (e) {}
   }
 }
 
@@ -212,9 +245,13 @@ function initAuth() {
 
       updateAuthUI();
       closeModal('login');
+      setAuthStatus('', '');
     } else {
-      currentUser = null;
-      updateAuthUI();
+      if (event === 'SIGNED_OUT') applyLoggedOutState();
+      else {
+        currentUser = null;
+        updateAuthUI();
+      }
     }
   });
 }
@@ -222,202 +259,111 @@ function initAuth() {
 /* ── RECARREGAR ESTADO APÓS LOGIN ──────────────────────────── */
 async function reloadStateFromStorage() {
   try {
-    var s = await loadProgress('conduta_stats');
-    if (s) stats = s;
-
-    var g = await loadProgress('conduta_game_' + dayKey());
-    if (g) gs = g;
-
-    var p = await loadProgress('conduta_profile');
-    if (p) userProfile = p;
-
-    // Re-renderiza tudo
-    ensureBadgeFields();
-    renderDots();
-    renderCase();
-    renderGuesses();
-    if (gs.done) {
-      renderResult();
-      document.getElementById('input-wrap').style.display = 'none';
+    if (typeof maybeReloadPlayerFromStorage === 'function') {
+      await maybeReloadPlayerFromStorage();
     }
+    if (typeof renderHeaderStats === 'function') renderHeaderStats();
+    if (typeof goHome === 'function') goHome();
   } catch (e) {}
 }
 
-/* ── ABRIR MODAL DE LOGIN / PERFIL ────────────────────────── */
+/* ── ABRIR MODAL DE LOGIN ──────────────────────────────────── */
 function openLoginModal() {
   if (currentUser) {
-    openProfileModal();
+    // Se já logado, abre modal de conta
+    var emailDisplay = document.getElementById('account-email-display');
+    if (emailDisplay) emailDisplay.textContent = currentUser.email;
+    openModal('account');
   } else {
-    setLoginMode('login');
+    setLoginMode('signin');
+    var emailInput = document.getElementById('lg-email');
+    var passwordInput = document.getElementById('lg-password');
+    var magicInput = document.getElementById('login-email');
+    if (emailInput) emailInput.value = '';
+    if (passwordInput) passwordInput.value = '';
+    if (magicInput) magicInput.value = '';
+    refreshAuthModalState();
     openModal('login');
-  }
-}
-
-function openProfileModal() {
-  cancelEditUsername();
-
-  // Username e avatar
-  _refreshProfileHeader();
-
-  // Email
-  var emailDisplay = document.getElementById('account-email-display');
-  if (emailDisplay) emailDisplay.textContent = currentUser.email;
-
-  // Estatísticas de desempenho
-  ensureBadgeFields();
-  var winPct = stats.played > 0 ? Math.round((stats.wins / stats.played) * 100) : 0;
-  var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-  set('p-played',     stats.played);
-  set('p-wins',       winPct + '%');
-  set('p-streak',     stats.streak);
-  set('p-best',       stats.best);
-  set('p-day-streak', stats.dayStreak     || 0);
-  set('p-day-best',   stats.dayStreakBest || 0);
-
-  // Status do freeze
-  var fEl = document.getElementById('p-freeze');
-  if (fEl) {
-    var thisWeek   = isoWeekKey(dayKey());
-    var freezeUsed = stats.lastFreezeWeek === thisWeek;
-    fEl.textContent = freezeUsed
-      ? '🧊 Freeze usado esta semana'
-      : '🧊 Freeze disponível (1 dia por semana)';
-    fEl.className = 'freeze-status' + (freezeUsed ? ' used' : ' available');
-  }
-
-  // Badges
-  var badgesEl = document.getElementById('p-badges');
-  if (badgesEl) {
-    badgesEl.innerHTML = '';
-    BADGES.forEach(function(badge) {
-      var unlocked = !!stats.badges[badge.id];
-      var item = document.createElement('div');
-      item.className = 'profile-badge-item ' + (unlocked ? 'unlocked' : 'locked');
-      item.title = badge.name + ' — ' + badge.desc;
-      item.innerHTML =
-        '<div class="profile-badge-emoji">' + (unlocked ? badge.emoji : '🔒') + '</div>' +
-        '<div class="profile-badge-name">' + badge.name + '</div>';
-      badgesEl.appendChild(item);
-    });
-  }
-
-  openModal('account');
-}
-
-/* ── USERNAME: HELPERS ────────────────────────────────────── */
-function _getDisplayName() {
-  return (userProfile && userProfile.username) || '';
-}
-
-function _getAvatarChar() {
-  var name = _getDisplayName();
-  if (name) return name.charAt(0).toUpperCase();
-  return currentUser ? currentUser.email.charAt(0).toUpperCase() : '?';
-}
-
-function _refreshProfileHeader() {
-  var name = _getDisplayName();
-  var avatarEl = document.getElementById('profile-avatar');
-  var nameEl   = document.getElementById('profile-username-display');
-  if (avatarEl) avatarEl.textContent = _getAvatarChar();
-  if (nameEl)   nameEl.textContent   = name || 'Sem nome definido';
-}
-
-/* ── USERNAME: EDITAR / SALVAR ────────────────────────────── */
-function startEditUsername() {
-  document.getElementById('profile-edit-btn').style.display      = 'none';
-  document.getElementById('profile-username-form').style.display = 'block';
-  var inp = document.getElementById('profile-username-input');
-  inp.value = _getDisplayName();
-  inp.focus();
-}
-
-function cancelEditUsername() {
-  var editBtn = document.getElementById('profile-edit-btn');
-  var form    = document.getElementById('profile-username-form');
-  if (editBtn) editBtn.style.display = 'inline-flex';
-  if (form)    form.style.display    = 'none';
-}
-
-function saveUsername() {
-  var inp  = document.getElementById('profile-username-input');
-  var name = inp ? inp.value.trim() : '';
-
-  if (!name) { toast('Digite um nome.'); return; }
-  if (name.length > 30) { toast('Máximo 30 caracteres.'); return; }
-
-  userProfile.username = name;
-  saveProgress('conduta_profile', userProfile);
-
-  cancelEditUsername();
-  _refreshProfileHeader();
-  updateAuthUI();
-  toast('Nome salvo!');
-}
-
-/* ── ALTERNAR ENTRE LOGIN / CADASTRO ──────────────────────── */
-function setLoginMode(mode) {
-  _loginMode = mode;
-  var title    = document.getElementById('login-modal-title');
-  var btn      = document.getElementById('login-submit-btn');
-  var toggle   = document.getElementById('login-toggle');
-  var noteEl   = document.getElementById('login-note');
-
-  if (mode === 'signup') {
-    if (title)  title.textContent  = 'Criar conta';
-    if (btn)    btn.textContent    = 'Criar conta';
-    if (toggle) toggle.innerHTML   = 'Já tem conta? <a href="#" onclick="setLoginMode(\'login\'); return false;">Entrar</a>';
-    if (noteEl) noteEl.textContent = 'Mínimo de 6 caracteres na senha.';
-  } else {
-    if (title)  title.textContent  = 'Entrar no Conduta';
-    if (btn)    btn.textContent    = 'Entrar';
-    if (toggle) toggle.innerHTML   = 'Não tem conta? <a href="#" onclick="setLoginMode(\'signup\'); return false;">Criar conta</a>';
-    if (noteEl) noteEl.textContent = '';
   }
 }
 
 /* ── SUBMIT DO FORM DE LOGIN ───────────────────────────────── */
 function handleLoginSubmit(e) {
   if (e) e.preventDefault();
-  var emailInput = document.getElementById('login-email');
-  var passInput  = document.getElementById('login-password');
-  var email      = emailInput ? emailInput.value.trim() : '';
-  var password   = passInput  ? passInput.value : '';
+  var input = document.getElementById('login-email');
+  var email = input ? input.value.trim() : '';
 
   if (!email || email.indexOf('@') === -1) {
     toast('Digite um email válido.');
     return;
   }
 
-  if (!password || password.length < 6) {
-    toast('A senha deve ter no mínimo 6 caracteres.');
-    return;
-  }
-
   var btn = document.getElementById('login-submit-btn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Aguarde...';
+    btn.textContent = 'Enviando...';
   }
 
-  var action = _loginMode === 'signup'
-    ? signUpWithPassword(email, password)
-    : loginWithPassword(email, password);
-
-  action.then(function(result) {
+  sendMagicLink(email).then(function(success) {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = _loginMode === 'signup' ? 'Criar conta' : 'Entrar';
+      btn.textContent = 'Entrar com magic link';
     }
-    if (result === true) {
-      if (emailInput) emailInput.value = '';
-      if (passInput) passInput.value = '';
-    }
-    if (result === 'confirm') {
-      setLoginMode('login');
+    if (success && input) {
+      input.value = '';
     }
   });
 }
 
+/* ── HANDLERS DO MODAL ─────────────────────────────────────── */
+var loginMode = 'signin'; // 'signin' | 'signup' | 'magic'
+
+function setLoginMode(mode) {
+  loginMode = mode;
+  document.querySelectorAll('[data-login-mode]').forEach(el => {
+    el.style.display = el.dataset.loginMode === mode ? '' : 'none';
+  });
+  const title = document.getElementById('login-title');
+  const submit = document.getElementById('lg-submit');
+  if (title) title.textContent =
+    mode === 'signup' ? 'Criar conta' :
+    mode === 'magic'  ? 'Entrar por magic link' : 'Entrar';
+  if (submit) submit.textContent = mode === 'signup' ? 'Criar conta' : 'Entrar';
+}
+
+async function handleEmailPasswordSubmit(e) {
+  if (e) e.preventDefault();
+  const email = document.getElementById('lg-email').value.trim();
+  const pw    = document.getElementById('lg-password').value;
+  if (!email || !pw) { toast('Preencha email e senha.'); return; }
+  if (pw.length < 6 && loginMode === 'signup') { toast('Senha com ao menos 6 caracteres.'); return; }
+
+  const btn = document.getElementById('lg-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Aguarde...'; }
+
+  const ok = loginMode === 'signup'
+    ? await signupEmailPassword(email, pw)
+    : await loginEmailPassword(email, pw);
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = loginMode === 'signup' ? 'Criar conta' : 'Entrar';
+  }
+  if (ok) {
+    document.getElementById('lg-password').value = '';
+  }
+}
+
+window.loginWithGoogle = loginWithGoogle;
+window.loginEmailPassword = loginEmailPassword;
+window.signupEmailPassword = signupEmailPassword;
+window.handleEmailPasswordSubmit = handleEmailPasswordSubmit;
+window.handleLoginSubmit = handleLoginSubmit;
+window.setLoginMode = setLoginMode;
+window.openLoginModal = openLoginModal;
+
 // Inicializa auth quando DOM estiver pronto
-document.addEventListener('DOMContentLoaded', initAuth);
+document.addEventListener('DOMContentLoaded', function() {
+  refreshAuthModalState();
+  initAuth();
+});

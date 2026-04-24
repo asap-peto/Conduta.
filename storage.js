@@ -9,11 +9,16 @@
 var currentUser = null;   // null = deslogado → usa localStorage
 var _supabase   = null;   // referência ao cliente Supabase (setada em auth.js)
 
+function userCacheKey(userId, key) {
+  if (!userId) return key;
+  return `conduta_cache:${userId}:${key}`;
+}
+
 /* ── SALVAR PROGRESSO ──────────────────────────────────────── */
 async function saveProgress(key, data) {
-  // Sempre salva no localStorage como fallback
+  // Mantém cache local separado para convidado vs usuário autenticado
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem(currentUser ? userCacheKey(currentUser.id, key) : key, JSON.stringify(data));
   } catch (e) {}
 
   // Se logado, também persiste no Supabase
@@ -49,11 +54,18 @@ async function loadProgress(key) {
         return res.data.data;
       }
     } catch (e) {
-      // Falha silenciosa — cai para localStorage
+      // Falha silenciosa — cai para cache local do usuário
+    }
+
+    try {
+      var cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
+      return cachedRaw ? JSON.parse(cachedRaw) : null;
+    } catch (e) {
+      return null;
     }
   }
 
-  // Fallback: localStorage
+  // Fallback convidado: localStorage simples
   try {
     var raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
