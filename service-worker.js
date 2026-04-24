@@ -9,7 +9,7 @@ var ASSETS = [
   './levels.js',
   './levels-data.js',
   './gamification.js',
-  './ui.js?bundle=1',
+  './ui.js',
   './game.js',
   './register-sw.js',
   './manifest.json',
