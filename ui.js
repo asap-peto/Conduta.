@@ -39,6 +39,8 @@ function renderHeaderStats() {
 // ══════════════════════════════════════════════════════════
 let onbState = { step: 0, sampleAnswer: null };
 let homeSelectedLevelId = null;
+let leagueComposerOpen = false;
+let profileSettingsOpen = false;
 
 function renderOnboarding() {
   const view = document.getElementById('view-onboarding');
@@ -232,6 +234,7 @@ function renderHome() {
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === 'jogar');
   });
+  updateHomeHeroVisibility('jogar');
 }
 
 function renderBottomNav() {
@@ -319,6 +322,12 @@ function renderHomeHero() {
       if (currentView === 'home') renderHomeHero();
     });
   }
+}
+
+function updateHomeHeroVisibility(activeTab) {
+  const wrap = document.querySelector('#view-home .home-hero');
+  if (!wrap) return;
+  wrap.style.display = (activeTab === 'jogar' || activeTab === 'quests') ? 'block' : 'none';
 }
 
 function buildHeroProgressHtml(info) {
@@ -664,6 +673,7 @@ async function submitCreateLeague(event) {
     await createLeagueHubLeague({ name, accessCode, joinMode });
     const form = event?.target;
     if (form && typeof form.reset === 'function') form.reset();
+    leagueComposerOpen = false;
     toast('Liga criada com sucesso.');
     await renderLeague(true);
   } catch (err) {
@@ -695,6 +705,7 @@ async function submitJoinLeague(event) {
     const passwordInput = document.getElementById('league-join-password');
     if (passwordInput) passwordInput.value = '';
     const status = result?.[0]?.membership_status;
+    leagueComposerOpen = false;
     toast(status === 'pending' ? 'Pedido enviado para aprovação.' : 'Você entrou na liga.');
     await renderLeague(true);
   } catch (err) {
@@ -726,6 +737,37 @@ async function leaveLeagueMembership(leagueId) {
   } catch (err) {
     toast(err?.message || 'Não foi possível sair da liga.');
   }
+}
+
+async function submitLeagueSettingsUpdate(event, leagueId) {
+  if (event) event.preventDefault();
+  const form = event?.target;
+  const name = (form?.querySelector('#league-edit-name')?.value || '').trim();
+  const accessCode = form?.querySelector('#league-edit-password')?.value || '';
+
+  if (!name || name.length < 3) {
+    toast('O nome da liga precisa ter ao menos 3 caracteres.');
+    return;
+  }
+  if (accessCode && accessCode.length < 4) {
+    toast('A nova senha da liga precisa ter ao menos 4 caracteres.');
+    return;
+  }
+
+  try {
+    await updateLeagueHubLeague({ leagueId, name, accessCode });
+    const passwordInput = form?.querySelector('#league-edit-password');
+    if (passwordInput) passwordInput.value = '';
+    toast(accessCode ? 'Liga atualizada com nova senha.' : 'Nome da liga atualizado.');
+    await renderLeague(true);
+  } catch (err) {
+    toast(err?.message || 'Não foi possível atualizar a liga.');
+  }
+}
+
+function toggleLeagueComposer() {
+  leagueComposerOpen = !leagueComposerOpen;
+  renderLeague();
 }
 
 async function renderLeague(forceReload = false) {
@@ -797,20 +839,28 @@ async function renderLeague(forceReload = false) {
   pane.innerHTML = `
     <div class="league-shell-card">
       <div class="league-head">
-        <div class="league-emoji">🏟️</div>
-        <div class="league-name">Suas ligas</div>
-        <div class="league-sub">
-          ${player.isPro ? 'Plano Pro · ligas ilimitadas' : `Plano Free · ${joinedCount}/${limit} ligas em uso`}
-          · ${player.leagueXpWeek} XP nesta semana
+        <div class="league-head-top">
+          <div>
+            <div class="league-emoji">🏟️</div>
+            <div class="league-name">Suas ligas</div>
+            <div class="league-sub">
+              ${player.isPro ? 'Plano Pro · ligas ilimitadas' : `Plano Free · ${joinedCount}/${limit} ligas em uso`}
+              · ${player.leagueXpWeek} XP nesta semana
+            </div>
+          </div>
+          <button class="league-add-btn" onclick="toggleLeagueComposer()" aria-expanded="${leagueComposerOpen ? 'true' : 'false'}" aria-label="${leagueComposerOpen ? 'Fechar ações de liga' : 'Abrir ações de liga'}">
+            ${leagueComposerOpen ? '×' : '+'}
+          </button>
         </div>
       </div>
 
+      ${leagueComposerOpen ? `
       <div class="league-grid">
         <div class="league-panel">
           <div class="section-title" style="margin-top:0">CRIAR LIGA</div>
           <form class="league-form" onsubmit="submitCreateLeague(event)">
             <input id="league-create-name" class="text-input" type="text" maxlength="80" placeholder="Ex: R1 Clínica Médica" required>
-            <input id="league-create-password" class="text-input" type="password" minlength="4" placeholder="Senha da liga" required>
+            <input id="league-create-password" class="text-input" type="text" minlength="4" placeholder="Senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false" required>
             <div class="league-mode-group">
               <label class="league-mode-option">
                 <input type="radio" name="league-create-mode" value="auto" checked>
@@ -843,12 +893,13 @@ async function renderLeague(forceReload = false) {
                 : 'Escolha uma liga para entrar'
               }
             </div>
-            <input id="league-join-password" class="text-input" type="password" minlength="4" placeholder="Senha da liga" ${selectedJoinLeague ? '' : 'disabled'} required>
+            <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false" ${selectedJoinLeague ? '' : 'disabled'} required>
             <button class="btn-primary" type="submit" ${(selectedJoinLeague && canJoinMore) ? '' : 'disabled'}>Entrar na liga</button>
           </form>
           ${!canJoinMore ? `<div class="league-note">Faça upgrade para Pro ou saia de uma liga para abrir espaço.</div>` : ''}
         </div>
       </div>
+      ` : ''}
 
       <div class="section-title">MINHAS LIGAS</div>
       <div class="league-memberships">
@@ -885,6 +936,16 @@ async function renderLeague(forceReload = false) {
             <button class="btn-ghost league-refresh-btn" onclick="renderLeague(true)">Atualizar</button>
           </div>
 
+          ${isLeagueAdminMembership(selectedMembership.league_id) ? `
+            <div class="section-title" style="margin-top:0">EDITAR LIGA</div>
+            <form class="league-form league-settings-form" onsubmit="submitLeagueSettingsUpdate(event, '${selectedMembership.league_id}')">
+              <input id="league-edit-name" class="text-input" type="text" maxlength="80" value="${escapeHtml(selectedMembership.league_name)}" placeholder="Nome da liga" required>
+              <input id="league-edit-password" class="text-input" type="text" minlength="4" placeholder="Nova senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <div class="league-note">A senha fica visível enquanto você digita. Deixe em branco para manter a senha atual.</div>
+              <button class="btn-primary" type="submit">Salvar alterações</button>
+            </form>
+          ` : ''}
+
           ${selectedMembership.membership_status === 'pending' ? `
             <div class="league-empty-inline">Seu pedido está aguardando aprovação do admin.</div>
           ` : `
@@ -912,6 +973,12 @@ async function renderLeague(forceReload = false) {
                   </div>
                 </div>
               `).join('') : `<div class="league-empty-inline">Nenhum pedido pendente nessa liga.</div>`}
+            </div>
+          ` : ''}
+
+          ${selectedMembership.membership_role !== 'owner' ? `
+            <div class="league-detail-actions">
+              <button class="btn-ghost league-leave-btn" onclick="leaveLeagueMembership('${selectedMembership.league_id}')">Sair da liga</button>
             </div>
           ` : ''}
         </div>
@@ -1058,11 +1125,12 @@ async function saveProfileSettings(e) {
 
   player.displayName = cleanedName || 'Estudante';
   player.avatar = avatarInput?.value || player.avatar || '🩺';
+  profileSettingsOpen = false;
 
-  await savePlayer();
   renderHeaderStats();
   if (currentView === 'profile') renderProfile();
   if (player.onboarded && currentView === 'home') renderHome();
+  await savePlayer();
   toast('Ajustes salvos.');
 }
 
@@ -1092,6 +1160,13 @@ function renderProfile() {
   ];
 
   view.innerHTML = `
+    <div class="profile-shell">
+      <div class="profile-toolbar">
+        <button class="profile-settings-btn" onclick="openProfileSettings()" aria-label="Abrir ajustes">
+          ${icon('settings', 20)}
+        </button>
+      </div>
+
     <div class="profile-head">
       <div class="profile-avatar">${escapeHtml(avatar)}</div>
       <div class="profile-name">${escapeHtml(player.displayName || 'Estudante')}</div>
@@ -1121,30 +1196,6 @@ function renderProfile() {
       </div>
     </div>
 
-    <div class="section-title">AJUSTES</div>
-    <form class="settings-card" onsubmit="saveProfileSettings(event)">
-      <label class="settings-field">
-        <span class="settings-label">Como quer aparecer no app</span>
-        <input id="profile-display-name" class="text-input" type="text" maxlength="24" autocomplete="name" value="${escapeHtml(player.displayName || '')}" placeholder="Seu nome ou apelido">
-      </label>
-      <div class="settings-field">
-        <span class="settings-label">Avatar em emoji</span>
-        <div class="avatar-picker">
-          ${avatarOptions.map(option => `
-            <label class="avatar-option ${option === avatar ? 'selected' : ''}">
-              <input type="radio" name="profile-avatar" value="${option}" ${option === avatar ? 'checked' : ''}>
-              <span>${option}</span>
-            </label>
-          `).join('')}
-        </div>
-      </div>
-      <div class="settings-hint">
-        ${icon('calendar', 14, 'icn-inline')} Liga semanal atual: ${formatWeekRange(player.leagueWeekStart)} ·
-        ${icon('bolt', 14, 'icn-inline')} ${player.leagueXpWeek} XP esta semana
-      </div>
-      <button class="btn-primary" type="submit">Salvar ajustes</button>
-    </form>
-
     <div class="section-title">CONQUISTAS</div>
     <div class="badge-grid">
       ${allBadges.map(b => `
@@ -1164,7 +1215,46 @@ function renderProfile() {
       <button class="btn-ghost" onclick="openModal('pro')">${icon('crown', 16, 'icn-inline')} Conhecer Conduta Pro</button>
       <button class="btn-ghost" onclick="goHome()">Voltar ao mapa</button>
     </div>
+    </div>
+
+    ${profileSettingsOpen ? `
+      <div class="modal-backdrop profile-settings-backdrop" onclick="if(event.target===this)closeProfileSettings()">
+        <div class="modal-card profile-settings-modal">
+          <button class="modal-close" onclick="closeProfileSettings()" aria-label="Fechar">✕</button>
+          <h2 class="modal-title">Ajustes do perfil</h2>
+          <p class="modal-desc">Atualize como você aparece no app.</p>
+          <form class="settings-card settings-modal-card" onsubmit="saveProfileSettings(event)">
+            <label class="settings-field">
+              <span class="settings-label">Como quer aparecer no app</span>
+              <input id="profile-display-name" class="text-input" type="text" maxlength="24" autocomplete="name" value="${escapeHtml(player.displayName || '')}" placeholder="Seu nome ou apelido">
+            </label>
+            <div class="settings-field">
+              <span class="settings-label">Avatar em emoji</span>
+              <div class="avatar-picker">
+                ${avatarOptions.map(option => `
+                  <label class="avatar-option ${option === avatar ? 'selected' : ''}">
+                    <input type="radio" name="profile-avatar" value="${option}" ${option === avatar ? 'checked' : ''}>
+                    <span>${option}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+            <button class="btn-primary" type="button" onclick="saveProfileSettings(event)">Salvar ajustes</button>
+          </form>
+        </div>
+      </div>
+    ` : ''}
   `;
+}
+
+function openProfileSettings() {
+  profileSettingsOpen = true;
+  if (currentView === 'profile') renderProfile();
+}
+
+function closeProfileSettings() {
+  profileSettingsOpen = false;
+  if (currentView === 'profile') renderProfile();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1262,17 +1352,22 @@ function renderMedicalSvg(name) {
 window.renderHeaderStats = renderHeaderStats;
 window.renderOnboarding = renderOnboarding;
 window.renderHome = renderHome;
+window.updateHomeHeroVisibility = updateHomeHeroVisibility;
 window.renderLevelMap = renderLevelMap;
 window.toggleTodayCard = toggleTodayCard;
 window.renderLeague = renderLeague;
+window.toggleLeagueComposer = toggleLeagueComposer;
 window.renderQuests = renderQuests;
 window.renderComplete = renderComplete;
 window.renderProfile = renderProfile;
+window.openProfileSettings = openProfileSettings;
+window.closeProfileSettings = closeProfileSettings;
 window.renderMedicalSvg = renderMedicalSvg;
 window.openPastLevel = openPastLevel;
 window.submitCreateLeague = submitCreateLeague;
 window.chooseJoinLeague = chooseJoinLeague;
 window.submitJoinLeague = submitJoinLeague;
+window.submitLeagueSettingsUpdate = submitLeagueSettingsUpdate;
 window.openLeagueDetails = openLeagueDetails;
 window.handleLeagueRequest = handleLeagueRequest;
 window.leaveLeagueMembership = leaveLeagueMembership;

@@ -546,6 +546,16 @@ async function leaveLeagueHubLeague({ leagueId }) {
   await loadLeagueHub({ force: true });
 }
 
+async function updateLeagueHubLeague({ leagueId, name, accessCode }) {
+  const result = await leagueRpc('update_league_settings', {
+    p_league_id: leagueId,
+    p_name: name,
+    p_access_code: accessCode || null
+  });
+  await loadLeagueHub({ force: true });
+  return result;
+}
+
 // ── EXPOSIÇÃO GLOBAL ──────────────────────────────────────
 window.XP = XP;
 window.HEARTS = HEARTS;
@@ -584,3 +594,4 @@ window.createLeagueHubLeague = createLeagueHubLeague;
 window.joinLeagueHubLeague = joinLeagueHubLeague;
 window.reviewLeagueHubMembership = reviewLeagueHubMembership;
 window.leaveLeagueHubLeague = leaveLeagueHubLeague;
+window.updateLeagueHubLeague = updateLeagueHubLeague;

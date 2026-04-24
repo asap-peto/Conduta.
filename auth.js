@@ -36,6 +36,9 @@ function applyLoggedOutState() {
 
   if (typeof setPlayer === 'function') {
     setPlayer(loadProgressSync('conduta_player_v2'));
+    if (typeof hasVisitedConduta === 'function' && hasVisitedConduta() && typeof player !== 'undefined' && !player.onboarded) {
+      player.onboarded = true;
+    }
     if (typeof syncLeagueWeek === 'function') syncLeagueWeek();
     if (typeof refreshHearts === 'function') refreshHearts();
   }
@@ -226,6 +229,38 @@ function updateAuthUI() {
   }
 }
 
+async function hydrateExistingSession() {
+  if (!_supabase) return;
+
+  try {
+    const { data, error } = await _supabase.auth.getSession();
+    if (error) return;
+
+    const session = data && data.session;
+    if (session && session.user) {
+      currentUser = session.user;
+    } else {
+      currentUser = null;
+    }
+  } catch (e) {
+    // Se falhar, o app segue com o estado local.
+  }
+}
+
+var authBootstrapPromise = null;
+function startAuthBootstrap() {
+  if (authBootstrapPromise) return authBootstrapPromise;
+  authBootstrapPromise = (async function() {
+    refreshAuthModalState();
+    initAuth();
+    await hydrateExistingSession();
+    if (currentUser && typeof maybeReloadPlayerFromStorage === 'function') {
+      await maybeReloadPlayerFromStorage();
+    }
+  })();
+  return authBootstrapPromise;
+}
+
 /* ── LISTENER DE MUDANÇA DE AUTH ───────────────────────────── */
 function initAuth() {
   if (!_supabase) return;
@@ -361,9 +396,10 @@ window.handleEmailPasswordSubmit = handleEmailPasswordSubmit;
 window.handleLoginSubmit = handleLoginSubmit;
 window.setLoginMode = setLoginMode;
 window.openLoginModal = openLoginModal;
+window.logout = logout;
+window.startAuthBootstrap = startAuthBootstrap;
 
 // Inicializa auth quando DOM estiver pronto
 document.addEventListener('DOMContentLoaded', function() {
-  refreshAuthModalState();
-  initAuth();
+  startAuthBootstrap();
 });

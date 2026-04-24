@@ -1,17 +1,17 @@
-var CACHE = 'conduta-v16';
+var CACHE = 'conduta-v28';
 var ASSETS = [
   './',
   './index.html',
-  './styles.css?v=15',
-  './storage.js?v=8',
-  './icons.js?v=8',
-  './auth.js?v=9',
+  './styles.css?v=19',
+  './storage.js?v=10',
+  './icons.js?v=10',
+  './auth.js?v=13',
   './levels.js?v=9',
   './levels-data.js?v=2',
-  './gamification.js?v=11',
-  './ui.js?v=19',
-  './game.js?v=11',
-  './register-sw.js?v=12',
+  './gamification.js?v=12',
+  './ui.js?v=27',
+  './game.js?v=15',
+  './register-sw.js?v=24',
   './manifest.json',
   './Conduta_mini_logo.svg'
 ];

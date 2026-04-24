@@ -40,14 +40,24 @@ async function boot() {
     return;
   }
 
-  // Carrega player do storage
+  if (typeof startAuthBootstrap === 'function') {
+    try {
+      startAuthBootstrap();
+    } catch (e) {}
+  }
+
+  // Carrega player do storage local; a sessão remota hidrata em paralelo.
   const saved = loadProgressSync(STORAGE_KEY_PLAYER);
   setPlayer(saved);
+  if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
+    player.onboarded = true;
+  }
   const weeklyReset = syncLeagueWeek();
   refreshHearts();
 
   // Decide primeira tela
   if (!player.onboarded) {
+    if (typeof rememberCondutaVisit === 'function') rememberCondutaVisit();
     showView('onboarding');
     renderOnboarding();
   } else {
@@ -146,6 +156,9 @@ function showView(name) {
 }
 
 function goHome() {
+  if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
+    player.onboarded = true;
+  }
   if (!player.onboarded) {
     showView('onboarding');
     renderOnboarding();
@@ -174,6 +187,7 @@ function setTab(name) {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = (t === name) ? 'block' : 'none';
   });
+  if (typeof updateHomeHeroVisibility === 'function') updateHomeHeroVisibility(name);
   if (name === 'liga')   renderLeague();
   if (name === 'quests') renderQuests();
 }

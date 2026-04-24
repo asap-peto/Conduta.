@@ -49,6 +49,7 @@ const ICONS = {
   book: '<path d="M4 4h7a3 3 0 013 3v13a2 2 0 00-2-2H4zM20 4h-7a3 3 0 00-3 3v13a2 2 0 012-2h8z"/>',
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
   logout: '<path d="M10 4H5a2 2 0 00-2 2v12a2 2 0 002 2h5M15 12h7M19 8l4 4-4 4" transform="translate(-3,0)"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/><circle cx="12" cy="12" r="7.2"/>',
 
   // Feedback
   thumbUp: '<path d="M7 10v10H4V10zM7 10l4-7a2 2 0 014 2v3h5a2 2 0 012 2l-2 7a2 2 0 01-2 2H7"/>',

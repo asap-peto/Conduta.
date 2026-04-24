@@ -8,17 +8,50 @@
 /* ── ESTADO DE AUTENTICAÇÃO ────────────────────────────────── */
 var currentUser = null;   // null = deslogado → usa localStorage
 var _supabase   = null;   // referência ao cliente Supabase (setada em auth.js)
+var CONDUTA_VISITED_KEY = 'conduta_visited';
 
 function userCacheKey(userId, key) {
   if (!userId) return key;
   return `conduta_cache:${userId}:${key}`;
 }
 
+function hasVisitedConduta() {
+  try {
+    return localStorage.getItem(CONDUTA_VISITED_KEY) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function rememberCondutaVisit() {
+  try {
+    localStorage.setItem(CONDUTA_VISITED_KEY, '1');
+  } catch (e) {}
+}
+
+function normalizePlayerProgress(key, data) {
+  if (key !== 'conduta_player_v2') return data;
+
+  const normalized = data ? Object.assign({}, data) : null;
+  if (normalized && normalized.onboarded) {
+    rememberCondutaVisit();
+    return normalized;
+  }
+
+  if (hasVisitedConduta()) {
+    return Object.assign({}, normalized || {}, { onboarded: true });
+  }
+
+  return normalized;
+}
+
 /* ── SALVAR PROGRESSO ──────────────────────────────────────── */
 async function saveProgress(key, data) {
+  const normalized = normalizePlayerProgress(key, data);
+
   // Mantém cache local separado para convidado vs usuário autenticado
   try {
-    localStorage.setItem(currentUser ? userCacheKey(currentUser.id, key) : key, JSON.stringify(data));
+    localStorage.setItem(currentUser ? userCacheKey(currentUser.id, key) : key, JSON.stringify(normalized));
   } catch (e) {}
 
   // Se logado, também persiste no Supabase
@@ -29,7 +62,7 @@ async function saveProgress(key, data) {
         .upsert({
           user_id:    currentUser.id,
           key:        key,
-          data:       data,
+          data:       normalized,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id,key' });
     } catch (e) {
@@ -51,7 +84,7 @@ async function loadProgress(key) {
         .single();
 
       if (res.data && res.data.data) {
-        return res.data.data;
+        return normalizePlayerProgress(key, res.data.data);
       }
     } catch (e) {
       // Falha silenciosa — cai para cache local do usuário
@@ -59,7 +92,7 @@ async function loadProgress(key) {
 
     try {
       var cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
-      return cachedRaw ? JSON.parse(cachedRaw) : null;
+      return normalizePlayerProgress(key, cachedRaw ? JSON.parse(cachedRaw) : null);
     } catch (e) {
       return null;
     }
@@ -68,7 +101,7 @@ async function loadProgress(key) {
   // Fallback convidado: localStorage simples
   try {
     var raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    return normalizePlayerProgress(key, raw ? JSON.parse(raw) : null);
   } catch (e) {
     return null;
   }
@@ -79,8 +112,11 @@ async function loadProgress(key) {
 function loadProgressSync(key) {
   try {
     var raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    return normalizePlayerProgress(key, raw ? JSON.parse(raw) : null);
   } catch (e) {
     return null;
   }
 }
+
+window.hasVisitedConduta = hasVisitedConduta;
+window.rememberCondutaVisit = rememberCondutaVisit;
