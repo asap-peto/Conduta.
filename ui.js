@@ -39,7 +39,10 @@ function renderHeaderStats() {
 // ══════════════════════════════════════════════════════════
 let onbState = { step: 0, sampleAnswer: null };
 let homeSelectedLevelId = null;
-let leagueComposerOpen = false;
+let leagueComposerOpen = false; // legado — mantém compat
+let leagueModalMode = null; // 'create' | 'join' | 'edit' | null
+let leagueEditingLeagueId = null;
+let leagueRequestsOpen = false;
 let profileSettingsOpen = false;
 
 function renderOnboarding() {
@@ -654,36 +657,179 @@ function leagueRoleLabel(role) {
   return 'Membro';
 }
 
+function openLeagueModal(mode, leagueId) {
+  leagueModalMode = mode;
+  leagueEditingLeagueId = leagueId || null;
+  renderLeagueModal();
+}
+
+function closeLeagueModal() {
+  leagueModalMode = null;
+  leagueEditingLeagueId = null;
+  renderLeagueModal();
+}
+
+function renderLeagueModal() {
+  let backdrop = document.getElementById('league-modal');
+  if (!leagueModalMode) {
+    if (backdrop) backdrop.remove();
+    return;
+  }
+
+  const canJoinMore = player.isPro || getJoinedLeagueCount() < getLeagueMembershipLimit();
+  const catalog = (leagueHubState.catalog || []).filter(l => {
+    const m = findLeagueMembership(l.league_id);
+    return !m || m.membership_status === 'rejected';
+  });
+  const selectedJoin = catalog.find(l => l.league_id === leagueHubState.selectedJoinLeagueId) || catalog[0] || null;
+
+  let body = '';
+  let title = '';
+
+  if (leagueModalMode === 'create') {
+    title = 'Criar liga';
+    body = `
+      <p class="league-modal-desc">Dê um nome, defina uma senha e escolha se os membros entram direto ou precisam de aprovação.</p>
+      <form class="league-form" onsubmit="submitCreateLeague(event)">
+        <label class="league-field">
+          <span class="league-field-label">Nome da liga</span>
+          <input id="league-create-name" class="text-input" type="text" maxlength="80" placeholder="Ex: R1 Clínica Médica" required>
+        </label>
+        <label class="league-field">
+          <span class="league-field-label">Senha</span>
+          <input id="league-create-password" class="text-input" type="text" minlength="4" placeholder="Mínimo 4 caracteres" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        </label>
+        <div class="league-mode-group" role="radiogroup" aria-label="Modo de entrada">
+          <label class="league-mode-option">
+            <input type="radio" name="league-create-mode" value="auto" checked>
+            <span><strong>Entrada direta</strong><small>Quem tem a senha entra na hora</small></span>
+          </label>
+          <label class="league-mode-option">
+            <input type="radio" name="league-create-mode" value="approval">
+            <span><strong>Com aprovação</strong><small>Você aprova cada pedido</small></span>
+          </label>
+        </div>
+        ${!canJoinMore ? `<div class="league-note">Plano Free permite até 2 ligas ativas/pendentes.</div>` : ''}
+        <div class="league-modal-actions">
+          <button type="button" class="btn-ghost" onclick="closeLeagueModal()">Cancelar</button>
+          <button type="submit" class="btn-primary" ${canJoinMore ? '' : 'disabled'}>Criar liga</button>
+        </div>
+      </form>
+    `;
+  } else if (leagueModalMode === 'join') {
+    title = 'Entrar em uma liga';
+    body = `
+      <p class="league-modal-desc">Escolha uma liga da lista e digite a senha que o admin compartilhou.</p>
+      <div class="league-catalog" role="radiogroup" aria-label="Ligas disponíveis">
+        ${catalog.length ? catalog.map(league => `
+          <button type="button" class="league-catalog-card ${selectedJoin?.league_id === league.league_id ? 'selected' : ''}" onclick="chooseJoinLeague('${league.league_id}')">
+            <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
+            <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
+          </button>
+        `).join('') : `<div class="league-note">Nenhuma liga pública disponível. Peça para o admin criar uma.</div>`}
+      </div>
+      <form class="league-form" onsubmit="submitJoinLeague(event)">
+        <label class="league-field">
+          <span class="league-field-label">Senha da liga</span>
+          <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha compartilhada pelo admin" autocomplete="off" autocapitalize="off" spellcheck="false" ${selectedJoin ? '' : 'disabled'} required>
+        </label>
+        ${!canJoinMore ? `<div class="league-note">Faça upgrade para Pro ou saia de uma liga para abrir espaço.</div>` : ''}
+        <div class="league-modal-actions">
+          <button type="button" class="btn-ghost" onclick="closeLeagueModal()">Cancelar</button>
+          <button type="submit" class="btn-primary" ${(selectedJoin && canJoinMore) ? '' : 'disabled'}>Entrar${selectedJoin && selectedJoin.join_mode === 'approval' ? ' (solicitar)' : ''}</button>
+        </div>
+      </form>
+    `;
+  } else if (leagueModalMode === 'edit') {
+    const membership = findLeagueMembership(leagueEditingLeagueId);
+    if (!membership) { closeLeagueModal(); return; }
+    title = 'Editar liga';
+    body = `
+      <form class="league-form" onsubmit="submitLeagueSettingsUpdate(event, '${membership.league_id}')">
+        <label class="league-field">
+          <span class="league-field-label">Nome da liga</span>
+          <input id="league-edit-name" class="text-input" type="text" maxlength="80" value="${escapeHtml(membership.league_name)}" required>
+        </label>
+        <label class="league-field">
+          <span class="league-field-label">Nova senha <small>(opcional)</small></span>
+          <input id="league-edit-password" class="text-input" type="text" minlength="4" placeholder="Deixe em branco para manter" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+        <div class="league-mode-group" role="radiogroup" aria-label="Modo de entrada">
+          <label class="league-mode-option">
+            <input type="radio" name="league-edit-mode" value="auto" ${membership.join_mode === 'auto' ? 'checked' : ''}>
+            <span><strong>Entrada direta</strong><small>Senha libera o acesso</small></span>
+          </label>
+          <label class="league-mode-option">
+            <input type="radio" name="league-edit-mode" value="approval" ${membership.join_mode !== 'auto' ? 'checked' : ''}>
+            <span><strong>Com aprovação</strong><small>Admin aprova cada pedido</small></span>
+          </label>
+        </div>
+        <div class="league-modal-actions">
+          <button type="button" class="btn-ghost" onclick="closeLeagueModal()">Cancelar</button>
+          <button type="submit" class="btn-primary">Salvar alterações</button>
+        </div>
+      </form>
+      ${membership.membership_role === 'owner' ? `
+        <div class="league-danger-zone">
+          <div class="league-danger-title">Zona de risco</div>
+          <div class="league-danger-copy">Excluir a liga remove todos os membros e não pode ser desfeito.</div>
+          <button type="button" class="btn-ghost league-danger-btn" onclick="confirmDeleteLeague('${membership.league_id}')">Excluir liga</button>
+        </div>
+      ` : ''}
+    `;
+  }
+
+  const html = `
+    <div class="modal-backdrop league-modal-backdrop" id="league-modal" onclick="if(event.target===this)closeLeagueModal()">
+      <div class="modal-card league-modal-card">
+        <button class="modal-close" onclick="closeLeagueModal()" aria-label="Fechar">✕</button>
+        <h2 class="modal-title">${escapeHtml(title)}</h2>
+        ${body}
+      </div>
+    </div>
+  `;
+
+  if (backdrop) {
+    backdrop.outerHTML = html;
+  } else {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstElementChild);
+  }
+
+  // foco inicial
+  setTimeout(() => {
+    const focusTarget = document.querySelector('#league-modal input:not([disabled]), #league-modal button.btn-primary');
+    if (focusTarget) focusTarget.focus();
+  }, 30);
+}
+
 async function submitCreateLeague(event) {
   if (event) event.preventDefault();
   const name = (document.getElementById('league-create-name')?.value || '').trim();
   const accessCode = document.getElementById('league-create-password')?.value || '';
-  const joinMode = document.querySelector('input[name="league-create-mode"]:checked')?.value || 'approval';
+  const joinMode = document.querySelector('input[name="league-create-mode"]:checked')?.value || 'auto';
 
-  if (!name || name.length < 3) {
-    toast('Dê um nome com ao menos 3 caracteres para a liga.');
-    return;
-  }
-  if (accessCode.length < 4) {
-    toast('A senha da liga precisa ter ao menos 4 caracteres.');
-    return;
-  }
+  if (!name || name.length < 3) { toast('Dê um nome com ao menos 3 caracteres para a liga.'); return; }
+  if (accessCode.length < 4)    { toast('A senha da liga precisa ter ao menos 4 caracteres.'); return; }
+
+  const submitBtn = event?.target?.querySelector('button[type="submit"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Criando...'; }
 
   try {
     await createLeagueHubLeague({ name, accessCode, joinMode });
-    const form = event?.target;
-    if (form && typeof form.reset === 'function') form.reset();
-    leagueComposerOpen = false;
     toast('Liga criada com sucesso.');
-    await renderLeague(true);
+    closeLeagueModal();
+    renderLeague();
   } catch (err) {
     toast(err?.message || 'Não foi possível criar a liga.');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Criar liga'; }
   }
 }
 
 function chooseJoinLeague(leagueId) {
   setSelectedJoinLeague(leagueId);
-  renderLeague();
+  renderLeagueModal();
 }
 
 async function submitJoinLeague(event) {
@@ -691,51 +837,85 @@ async function submitJoinLeague(event) {
   const leagueId = leagueHubState.selectedJoinLeagueId;
   const accessCode = document.getElementById('league-join-password')?.value || '';
 
-  if (!leagueId) {
-    toast('Escolha uma liga primeiro.');
-    return;
-  }
-  if (accessCode.length < 4) {
-    toast('Digite a senha da liga.');
-    return;
-  }
+  if (!leagueId)              { toast('Escolha uma liga primeiro.'); return; }
+  if (accessCode.length < 4)  { toast('Digite a senha da liga.');    return; }
+
+  const submitBtn = event?.target?.querySelector('button[type="submit"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Enviando...'; }
 
   try {
     const result = await joinLeagueHubLeague({ leagueId, accessCode });
-    const passwordInput = document.getElementById('league-join-password');
-    if (passwordInput) passwordInput.value = '';
     const status = result?.[0]?.membership_status;
-    leagueComposerOpen = false;
     toast(status === 'pending' ? 'Pedido enviado para aprovação.' : 'Você entrou na liga.');
-    await renderLeague(true);
+    closeLeagueModal();
+    renderLeague();
   } catch (err) {
     toast(err?.message || 'Não foi possível entrar na liga.');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar'; }
   }
 }
 
 async function openLeagueDetails(leagueId) {
   setSelectedLeagueHubLeague(leagueId);
-  await renderLeague(true);
+  leagueRequestsOpen = false;
+  renderLeague();
+  // refresca só as standings desta liga em background
+  if (typeof refreshLeagueStandings === 'function') {
+    refreshLeagueStandings().then(() => renderLeague());
+  }
+}
+
+function toggleLeagueCard(leagueId) {
+  if (leagueHubState.selectedLeagueId === leagueId) {
+    setSelectedLeagueHubLeague(null);
+    leagueRequestsOpen = false;
+    renderLeague();
+    return;
+  }
+  openLeagueDetails(leagueId);
+}
+
+function toggleLeagueRequests(event) {
+  if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+  leagueRequestsOpen = !leagueRequestsOpen;
+  renderLeague();
 }
 
 async function handleLeagueRequest(membershipId, action) {
   try {
     await reviewLeagueHubMembership({ membershipId, action });
     toast(action === 'approve' ? 'Pedido aprovado.' : 'Pedido recusado.');
-    await renderLeague(true);
+    renderLeague();
   } catch (err) {
     toast(err?.message || 'Não foi possível processar o pedido.');
   }
 }
 
 async function leaveLeagueMembership(leagueId) {
-  if (!confirm('Sair desta liga?')) return;
+  const membership = findLeagueMembership(leagueId);
+  const name = membership ? membership.league_name : 'esta liga';
+  if (!confirm(`Sair de "${name}"? Você perde seu lugar no ranking semanal.`)) return;
   try {
     await leaveLeagueHubLeague({ leagueId });
     toast('Você saiu da liga.');
-    await renderLeague(true);
+    closeLeagueModal();
+    renderLeague();
   } catch (err) {
     toast(err?.message || 'Não foi possível sair da liga.');
+  }
+}
+
+async function confirmDeleteLeague(leagueId) {
+  const membership = findLeagueMembership(leagueId);
+  const name = membership ? membership.league_name : 'esta liga';
+  if (!confirm(`Excluir "${name}"? Todos os membros serão removidos. Esta ação não pode ser desfeita.`)) return;
+  try {
+    await deleteLeagueHubLeague({ leagueId });
+    toast('Liga excluída.');
+    closeLeagueModal();
+    renderLeague();
+  } catch (err) {
+    toast(err?.message || 'Não foi possível excluir a liga.');
   }
 }
 
@@ -744,46 +924,55 @@ async function submitLeagueSettingsUpdate(event, leagueId) {
   const form = event?.target;
   const name = (form?.querySelector('#league-edit-name')?.value || '').trim();
   const accessCode = form?.querySelector('#league-edit-password')?.value || '';
+  const joinMode = form?.querySelector('input[name="league-edit-mode"]:checked')?.value || null;
 
-  if (!name || name.length < 3) {
-    toast('O nome da liga precisa ter ao menos 3 caracteres.');
-    return;
-  }
-  if (accessCode && accessCode.length < 4) {
-    toast('A nova senha da liga precisa ter ao menos 4 caracteres.');
-    return;
-  }
+  if (!name || name.length < 3) { toast('O nome da liga precisa ter ao menos 3 caracteres.'); return; }
+  if (accessCode && accessCode.length < 4) { toast('A nova senha precisa ter ao menos 4 caracteres.'); return; }
+
+  const submitBtn = form?.querySelector('button[type="submit"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Salvando...'; }
 
   try {
-    await updateLeagueHubLeague({ leagueId, name, accessCode });
-    const passwordInput = form?.querySelector('#league-edit-password');
-    if (passwordInput) passwordInput.value = '';
-    toast(accessCode ? 'Liga atualizada com nova senha.' : 'Nome da liga atualizado.');
-    await renderLeague(true);
+    await updateLeagueHubLeague({ leagueId, name, accessCode, joinMode });
+    toast(accessCode ? 'Liga atualizada com nova senha.' : 'Liga atualizada.');
+    closeLeagueModal();
+    renderLeague();
   } catch (err) {
     toast(err?.message || 'Não foi possível atualizar a liga.');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Salvar alterações'; }
   }
 }
 
 function toggleLeagueComposer() {
-  leagueComposerOpen = !leagueComposerOpen;
-  renderLeague();
+  openLeagueModal(getJoinedLeagueCount() > 0 ? 'join' : 'create');
 }
 
-async function renderLeague(forceReload = false) {
+function leagueSkeletonHtml() {
+  return `
+    <div class="league-skeleton">
+      <div class="skel-row skel-row-lg"></div>
+      <div class="skel-row skel-row-md"></div>
+      <div class="skel-row"></div>
+      <div class="skel-row"></div>
+    </div>
+  `;
+}
+
+function renderLeague(forceReload = false) {
   const pane = document.getElementById('tab-liga');
   if (!pane) return;
 
   if (!currentUser) {
     pane.innerHTML = `
       <div class="league-shell-card">
-        <div class="league-head">
+        <div class="league-hero">
           <div class="league-emoji">🏟️</div>
           <div class="league-name">Ligas privadas</div>
-          <div class="league-sub">Crie sua própria liga ou entre em uma com senha.</div>
+          <div class="league-sub">Crie sua liga ou entre em uma com senha.</div>
         </div>
         <div class="league-empty">
-          <div class="league-empty-title">Entre na sua conta para usar ligas</div>
+          <div class="league-empty-title">Entre para começar</div>
+          <div class="league-empty-copy">Seu progresso semanal vira ranking compartilhado com quem você joga.</div>
           <button class="btn-primary" onclick="openLoginModal()">Entrar / Criar conta</button>
         </div>
       </div>
@@ -803,184 +992,176 @@ async function renderLeague(forceReload = false) {
     return;
   }
 
-  pane.innerHTML = `
-    <div class="league-shell-card">
-      <div class="league-empty">
-        <div class="league-empty-title">Carregando ligas...</div>
-      </div>
-    </div>
-  `;
-
-  const state = await loadLeagueHub({ force: forceReload });
-  const limit = getLeagueMembershipLimit();
-  const joinedCount = getJoinedLeagueCount();
-  const canJoinMore = player.isPro || joinedCount < limit;
-  const joinableCatalog = (state.catalog || []).filter(l => !findLeagueMembership(l.league_id) || findLeagueMembership(l.league_id)?.membership_status === 'rejected');
-  const selectedJoinLeague = (state.catalog || []).find(l => l.league_id === state.selectedJoinLeagueId) || joinableCatalog[0] || null;
-  const selectedMembership = findLeagueMembership(state.selectedLeagueId);
-
-  if (selectedJoinLeague && selectedJoinLeague.league_id !== state.selectedJoinLeagueId) {
-    setSelectedJoinLeague(selectedJoinLeague.league_id);
+  // Stale-while-revalidate: se já temos dados, pinta imediatamente e atualiza em background.
+  if (leagueHubState.ready) {
+    paintLeague(pane);
+    if (forceReload || (Date.now() - leagueHubState.lastLoadedAt) > 30_000) {
+      loadLeagueHub({ force: forceReload, onRefresh: () => paintLeague(pane) });
+    }
+    return;
   }
 
-  if (state.error) {
+  // Primeira carga: skeleton + fetch.
+  pane.innerHTML = `
+    <div class="league-shell-card">
+      <div class="league-hero league-hero-skel">
+        <div class="skel-title"></div>
+        <div class="skel-sub"></div>
+      </div>
+      ${leagueSkeletonHtml()}
+    </div>
+  `;
+  loadLeagueHub({ force: forceReload }).then(() => paintLeague(pane));
+}
+
+function paintLeague(pane) {
+  if (!pane) pane = document.getElementById('tab-liga');
+  if (!pane) return;
+
+  const state = leagueHubState;
+
+  if (state.error && !state.ready) {
     pane.innerHTML = `
       <div class="league-shell-card">
         <div class="league-empty">
           <div class="league-empty-title">Não foi possível carregar as ligas</div>
           <div class="league-empty-copy">${escapeHtml(state.error)}</div>
-          <button class="btn-ghost" onclick="renderLeague(true)">Tentar novamente</button>
+          <button class="btn-primary" onclick="renderLeague(true)">Tentar novamente</button>
         </div>
       </div>
     `;
     return;
   }
 
+  const limit = getLeagueMembershipLimit();
+  const joinedCount = getJoinedLeagueCount();
+  const canJoinMore = player.isPro || joinedCount < limit;
+  const memberships = state.memberships || [];
+  const catalogAvailable = (state.catalog || []).some(l => {
+    const m = findLeagueMembership(l.league_id);
+    return !m || m.membership_status === 'rejected';
+  });
+
+  const limitLabel = player.isPro
+    ? 'Pro · ligas ilimitadas'
+    : `Free · ${joinedCount}/${limit} ligas`;
+
   pane.innerHTML = `
-    <div class="league-shell-card">
-      <div class="league-head">
-        <div class="league-head-top">
-          <div>
-            <div class="league-emoji">🏟️</div>
+    <div class="league-shell-card ${state.refreshing ? 'is-refreshing' : ''}">
+      <div class="league-hero">
+        <div class="league-hero-inner">
+          <div class="league-emoji">🏟️</div>
+          <div class="league-hero-text">
             <div class="league-name">Suas ligas</div>
-            <div class="league-sub">
-              ${player.isPro ? 'Plano Pro · ligas ilimitadas' : `Plano Free · ${joinedCount}/${limit} ligas em uso`}
-              · ${player.leagueXpWeek} XP nesta semana
-            </div>
+            <div class="league-sub">${escapeHtml(limitLabel)} · ${player.leagueXpWeek} XP nesta semana</div>
           </div>
-          <button class="league-add-btn" onclick="toggleLeagueComposer()" aria-expanded="${leagueComposerOpen ? 'true' : 'false'}" aria-label="${leagueComposerOpen ? 'Fechar ações de liga' : 'Abrir ações de liga'}">
-            ${leagueComposerOpen ? '×' : '+'}
+        </div>
+        <div class="league-quick-actions">
+          <button class="league-chip league-chip-primary" onclick="openLeagueModal('create')" ${canJoinMore ? '' : 'disabled'} title="${canJoinMore ? 'Criar uma nova liga' : 'Limite de ligas atingido'}">
+            <span class="league-chip-icon">＋</span> Criar
+          </button>
+          <button class="league-chip" onclick="openLeagueModal('join')" ${canJoinMore && catalogAvailable ? '' : 'disabled'} title="${catalogAvailable ? 'Entrar numa liga existente' : 'Nenhuma liga disponível'}">
+            <span class="league-chip-icon">🔑</span> Entrar
           </button>
         </div>
+        ${state.refreshing ? `<div class="league-refresh-indicator" aria-hidden="true"></div>` : ''}
       </div>
 
-      ${leagueComposerOpen ? `
-      <div class="league-grid">
-        <div class="league-panel">
-          <div class="section-title" style="margin-top:0">CRIAR LIGA</div>
-          <form class="league-form" onsubmit="submitCreateLeague(event)">
-            <input id="league-create-name" class="text-input" type="text" maxlength="80" placeholder="Ex: R1 Clínica Médica" required>
-            <input id="league-create-password" class="text-input" type="text" minlength="4" placeholder="Senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-            <div class="league-mode-group">
-              <label class="league-mode-option">
-                <input type="radio" name="league-create-mode" value="auto" checked>
-                <span>Entrar direto com senha</span>
-              </label>
-              <label class="league-mode-option">
-                <input type="radio" name="league-create-mode" value="approval">
-                <span>Senha + aprovação do admin</span>
-              </label>
-            </div>
-            <button class="btn-primary" type="submit" ${canJoinMore ? '' : 'disabled'}>Criar liga</button>
-          </form>
-          ${!canJoinMore ? `<div class="league-note">Usuários Free podem ter até 2 ligas ativas ou pendentes.</div>` : ''}
+      ${memberships.length ? `
+        <div class="section-title section-title-row">
+          <span>MINHAS LIGAS</span>
+          <button class="league-link-btn" onclick="renderLeague(true)" title="Atualizar">${state.refreshing ? 'Atualizando…' : '↻ Atualizar'}</button>
         </div>
-
-        <div class="league-panel">
-          <div class="section-title" style="margin-top:0">ENTRAR EM UMA LIGA</div>
-          <div class="league-catalog">
-            ${joinableCatalog.length ? joinableCatalog.map(league => `
-              <button class="league-catalog-card ${selectedJoinLeague?.league_id === league.league_id ? 'selected' : ''}" onclick="chooseJoinLeague('${league.league_id}')">
-                <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
-                <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
-              </button>
-            `).join('') : `<div class="league-note">Nenhuma liga disponível para entrar agora.</div>`}
-          </div>
-          <form class="league-form" onsubmit="submitJoinLeague(event)">
-            <div class="league-join-target">
-              ${selectedJoinLeague
-                ? `${escapeHtml(selectedJoinLeague.league_name)} · ${leagueJoinModeCopy(selectedJoinLeague.join_mode)}`
-                : 'Escolha uma liga para entrar'
-              }
-            </div>
-            <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false" ${selectedJoinLeague ? '' : 'disabled'} required>
-            <button class="btn-primary" type="submit" ${(selectedJoinLeague && canJoinMore) ? '' : 'disabled'}>Entrar na liga</button>
-          </form>
-          ${!canJoinMore ? `<div class="league-note">Faça upgrade para Pro ou saia de uma liga para abrir espaço.</div>` : ''}
+        <div class="league-memberships">
+          ${memberships.map(membership => renderMembershipCard(membership, state)).join('')}
         </div>
-      </div>
-      ` : ''}
-
-      <div class="section-title">MINHAS LIGAS</div>
-      <div class="league-memberships">
-        ${state.memberships.length ? state.memberships.map(membership => `
-          <div class="league-membership-card ${membership.league_id === state.selectedLeagueId ? 'selected' : ''}">
-            <button class="league-membership-main" onclick="openLeagueDetails('${membership.league_id}')">
-              <div class="league-membership-top">
-                <span class="league-membership-name">${escapeHtml(membership.league_name)}</span>
-                <span class="league-pill ${membership.membership_status}">${leagueStatusLabel(membership.membership_status)}</span>
-              </div>
-              <div class="league-membership-sub">
-                ${leagueRoleLabel(membership.membership_role)} · ${leagueJoinModeLabel(membership.join_mode)}
-              </div>
-              <div class="league-membership-meta">
-                <span>${membership.active_members} ativos</span>
-                <span>${membership.pending_members} pendentes</span>
-              </div>
-            </button>
-            ${membership.membership_role !== 'owner'
-              ? `<button class="league-inline-action" onclick="leaveLeagueMembership('${membership.league_id}')">Sair</button>`
-              : `<span class="league-inline-badge">Você é o admin</span>`
-            }
+      ` : `
+        <div class="league-empty league-empty-compact">
+          <div class="league-empty-title">Você ainda não está em nenhuma liga</div>
+          <div class="league-empty-copy">Crie a sua ou peça a senha de um colega para entrar.</div>
+          <div class="league-empty-cta">
+            <button class="btn-primary" onclick="openLeagueModal('create')">Criar liga</button>
+            ${catalogAvailable ? `<button class="btn-ghost" onclick="openLeagueModal('join')">Entrar em uma liga</button>` : ''}
           </div>
-        `).join('') : `<div class="league-empty-inline">Você ainda não participa de nenhuma liga.</div>`}
+        </div>
+      `}
+    </div>
+  `;
+
+  // Mantém o modal renderizado consistente com o estado atual
+  if (leagueModalMode) renderLeagueModal();
+}
+
+function renderMembershipCard(membership, state) {
+  const expanded = membership.league_id === state.selectedLeagueId;
+  const statusLabel = leagueStatusLabel(membership.membership_status);
+  const roleLabel = leagueRoleLabel(membership.membership_role);
+  const isOwner = membership.membership_role === 'owner';
+  const isAdmin = isLeagueAdminMembership(membership.league_id);
+  const isPending = membership.membership_status === 'pending';
+  const requests = state.requests || [];
+  const standings = state.standings || [];
+  const pendingCount = isAdmin ? (expanded ? requests.length : membership.pending_members) : 0;
+
+  return `
+    <div class="league-membership-card ${expanded ? 'expanded' : ''}">
+      <button class="league-membership-main" onclick="toggleLeagueCard('${membership.league_id}')" aria-expanded="${expanded ? 'true' : 'false'}">
+        <div class="league-membership-top">
+          <span class="league-membership-name">${escapeHtml(membership.league_name)}</span>
+          <span class="league-pill ${membership.membership_status}">${statusLabel}</span>
+          <span class="league-detail-caret" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+        </div>
+        <div class="league-membership-sub">
+          <span class="league-role-badge ${isAdmin ? 'is-admin' : ''}">${roleLabel}</span>
+          · ${leagueJoinModeLabel(membership.join_mode)}
+        </div>
+        <div class="league-membership-meta">
+          <span>👥 ${membership.active_members} ativos</span>
+          ${pendingCount > 0 ? `<span class="badge-warn">⏳ ${pendingCount} pendentes</span>` : ''}
+        </div>
+      </button>
+      <div class="league-membership-actions">
+        ${isAdmin ? `<button class="league-icon-btn" onclick="event.stopPropagation(); openLeagueModal('edit', '${membership.league_id}')" aria-label="Editar liga" title="Editar liga">✎</button>` : ''}
+        ${!isOwner ? `<button class="league-icon-btn danger" onclick="event.stopPropagation(); leaveLeagueMembership('${membership.league_id}')" aria-label="Sair da liga" title="Sair da liga">↪</button>` : ''}
       </div>
 
-      ${selectedMembership ? `
-        <div class="league-detail-card">
-          <div class="league-detail-head">
-            <div>
-              <div class="league-detail-title">${escapeHtml(selectedMembership.league_name)}</div>
-              <div class="league-detail-sub">${leagueRoleLabel(selectedMembership.membership_role)} · ${leagueStatusLabel(selectedMembership.membership_status)}</div>
-            </div>
-            <button class="btn-ghost league-refresh-btn" onclick="renderLeague(true)">Atualizar</button>
-          </div>
-
-          ${isLeagueAdminMembership(selectedMembership.league_id) ? `
-            <div class="section-title" style="margin-top:0">EDITAR LIGA</div>
-            <form class="league-form league-settings-form" onsubmit="submitLeagueSettingsUpdate(event, '${selectedMembership.league_id}')">
-              <input id="league-edit-name" class="text-input" type="text" maxlength="80" value="${escapeHtml(selectedMembership.league_name)}" placeholder="Nome da liga" required>
-              <input id="league-edit-password" class="text-input" type="text" minlength="4" placeholder="Nova senha da liga" autocomplete="off" autocapitalize="off" spellcheck="false">
-              <div class="league-note">A senha fica visível enquanto você digita. Deixe em branco para manter a senha atual.</div>
-              <button class="btn-primary" type="submit">Salvar alterações</button>
-            </form>
-          ` : ''}
-
-          ${selectedMembership.membership_status === 'pending' ? `
-            <div class="league-empty-inline">Seu pedido está aguardando aprovação do admin.</div>
+      ${expanded ? `
+        <div class="league-card-body">
+          ${isPending ? `
+            <div class="league-empty-inline">⏳ Seu pedido está aguardando aprovação do admin.</div>
           ` : `
-            <div class="section-title" style="margin-top:0">RANKING DA LIGA</div>
+            <div class="section-title section-title-inline">RANKING DA SEMANA</div>
             <div class="leaderboard">
-              ${state.standings.length ? state.standings.map((member, i) => `
+              ${standings.length ? standings.map((member, i) => `
                 <div class="leader-row ${member.user_id === currentUser.id ? 'you' : ''}">
                   <span class="leader-rank ${i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : ''}">${i + 1}</span>
-                  <span class="leader-name">${escapeHtml(member.avatar || '🩺')} ${escapeHtml(member.display_name)}</span>
+                  <span class="leader-avatar">${escapeHtml(member.avatar || '🩺')}</span>
+                  <span class="leader-name">${escapeHtml(member.display_name)}${member.role === 'owner' ? ' <span class="leader-chip">admin</span>' : member.role === 'admin' ? ' <span class="leader-chip">mod</span>' : ''}</span>
                   <span class="leader-xp">${member.weekly_xp} XP</span>
                 </div>
-              `).join('') : `<div class="league-empty-inline">Ainda não há membros ativos nessa liga.</div>`}
+              `).join('') : `<div class="league-empty-inline">Ainda não há membros ativos aqui.</div>`}
             </div>
-          `}
 
-          ${isLeagueAdminMembership(selectedMembership.league_id) ? `
-            <div class="section-title">PEDIDOS PENDENTES</div>
-            <div class="league-requests">
-              ${state.requests.length ? state.requests.map(request => `
-                <div class="league-request-card">
-                  <div class="league-request-user">${escapeHtml(request.avatar || '🩺')} ${escapeHtml(request.display_name)}</div>
-                  <div class="league-request-actions">
-                    <button class="btn-ghost league-mini-btn" onclick="handleLeagueRequest('${request.membership_id}', 'reject')">Recusar</button>
-                    <button class="btn-primary league-mini-btn" onclick="handleLeagueRequest('${request.membership_id}', 'approve')">Aprovar</button>
-                  </div>
+            ${isAdmin ? `
+              <button type="button" class="league-requests-toggle ${leagueRequestsOpen ? 'open' : ''}" onclick="toggleLeagueRequests(event)" aria-expanded="${leagueRequestsOpen ? 'true' : 'false'}">
+                <span>Solicitações${requests.length ? ` <span class="league-req-count">${requests.length}</span>` : ''}</span>
+                <span class="league-requests-caret" aria-hidden="true">${leagueRequestsOpen ? '▾' : '▸'}</span>
+              </button>
+              ${leagueRequestsOpen ? `
+                <div class="league-requests">
+                  ${requests.length ? requests.map(request => `
+                    <div class="league-request-card">
+                      <div class="league-request-user">${escapeHtml(request.avatar || '🩺')} ${escapeHtml(request.display_name)}</div>
+                      <div class="league-request-actions">
+                        <button class="btn-ghost league-mini-btn" onclick="handleLeagueRequest('${request.membership_id}', 'reject')">Recusar</button>
+                        <button class="btn-primary league-mini-btn" onclick="handleLeagueRequest('${request.membership_id}', 'approve')">Aprovar</button>
+                      </div>
+                    </div>
+                  `).join('') : `<div class="league-empty-inline">Nenhum pedido pendente.</div>`}
                 </div>
-              `).join('') : `<div class="league-empty-inline">Nenhum pedido pendente nessa liga.</div>`}
-            </div>
-          ` : ''}
-
-          ${selectedMembership.membership_role !== 'owner' ? `
-            <div class="league-detail-actions">
-              <button class="btn-ghost league-leave-btn" onclick="leaveLeagueMembership('${selectedMembership.league_id}')">Sair da liga</button>
-            </div>
-          ` : ''}
+              ` : ''}
+            ` : ''}
+          `}
         </div>
       ` : ''}
     </div>
@@ -1371,6 +1552,13 @@ window.submitLeagueSettingsUpdate = submitLeagueSettingsUpdate;
 window.openLeagueDetails = openLeagueDetails;
 window.handleLeagueRequest = handleLeagueRequest;
 window.leaveLeagueMembership = leaveLeagueMembership;
+window.openLeagueModal = openLeagueModal;
+window.closeLeagueModal = closeLeagueModal;
+window.renderLeagueModal = renderLeagueModal;
+window.confirmDeleteLeague = confirmDeleteLeague;
+window.toggleLeagueCard = toggleLeagueCard;
+window.toggleLeagueRequests = toggleLeagueRequests;
+window.paintLeague = paintLeague;
 window.saveProfileSettings = saveProfileSettings;
 window.onbSelectDemo = onbSelectDemo;
 window.onbConfirmDemo = onbConfirmDemo;

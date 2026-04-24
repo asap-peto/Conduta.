@@ -30,9 +30,11 @@ CREATE INDEX IF NOT EXISTS idx_user_progress_user_key ON user_progress(user_id, 
 -- - entrada validada via RPC
 -- - free: até 2 ligas ativas/pendentes
 -- - pro: ilimitado
+-- - compatível com projetos Supabase em que pgcrypto fica em extensions
 -- ============================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 CREATE TABLE IF NOT EXISTS leagues (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -57,6 +59,7 @@ CREATE TABLE IF NOT EXISTS league_members (
 CREATE INDEX IF NOT EXISTS idx_leagues_owner_id ON leagues(owner_id);
 CREATE INDEX IF NOT EXISTS idx_league_members_league_id ON league_members(league_id);
 CREATE INDEX IF NOT EXISTS idx_league_members_user_id ON league_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_league_members_league_status ON league_members(league_id, status);
 
 ALTER TABLE leagues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE league_members ENABLE ROW LEVEL SECURITY;
@@ -65,7 +68,7 @@ CREATE OR REPLACE FUNCTION is_league_admin(p_league_id uuid, p_user_id uuid DEFA
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT EXISTS (
     SELECT 1
@@ -97,7 +100,7 @@ CREATE OR REPLACE FUNCTION current_user_is_pro()
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT COALESCE(
     (
@@ -124,7 +127,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user uuid := auth.uid();
@@ -168,7 +171,7 @@ BEGIN
     v_user,
     trim(p_name),
     v_join_mode,
-    crypt(p_access_code, gen_salt('bf'))
+    extensions.crypt(p_access_code, extensions.gen_salt('bf'))
   )
   RETURNING id INTO v_league_id;
 
@@ -192,7 +195,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user uuid := auth.uid();
@@ -214,7 +217,7 @@ BEGIN
     RAISE EXCEPTION 'Liga não encontrada.';
   END IF;
 
-  IF crypt(COALESCE(p_access_code, ''), v_league.access_code_hash) <> v_league.access_code_hash THEN
+  IF extensions.crypt(COALESCE(p_access_code, ''), v_league.access_code_hash) <> v_league.access_code_hash THEN
     RAISE EXCEPTION 'Senha da liga incorreta.';
   END IF;
 
@@ -269,7 +272,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user uuid := auth.uid();
@@ -322,7 +325,7 @@ CREATE OR REPLACE FUNCTION leave_league(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user uuid := auth.uid();
@@ -350,6 +353,104 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION update_league_settings(
+  p_league_id uuid,
+  p_name text,
+  p_access_code text DEFAULT NULL,
+  p_join_mode text DEFAULT NULL
+)
+RETURNS TABLE (
+  league_id uuid,
+  league_name text,
+  join_mode text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_user uuid := auth.uid();
+  v_league leagues%ROWTYPE;
+  v_new_name text;
+  v_new_mode text;
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'É preciso estar autenticado.';
+  END IF;
+
+  SELECT * INTO v_league
+  FROM leagues
+  WHERE id = p_league_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liga não encontrada.';
+  END IF;
+
+  IF NOT is_league_admin(p_league_id, v_user) THEN
+    RAISE EXCEPTION 'Apenas admins da liga podem editar a liga.';
+  END IF;
+
+  v_new_name := trim(COALESCE(NULLIF(p_name, ''), v_league.name));
+
+  IF char_length(v_new_name) < 3 THEN
+    RAISE EXCEPTION 'Nome da liga precisa ter ao menos 3 caracteres.';
+  END IF;
+
+  IF p_access_code IS NOT NULL AND p_access_code <> '' AND char_length(p_access_code) < 4 THEN
+    RAISE EXCEPTION 'A nova senha da liga precisa ter ao menos 4 caracteres.';
+  END IF;
+
+  v_new_mode := COALESCE(NULLIF(p_join_mode, ''), v_league.join_mode);
+  IF v_new_mode NOT IN ('auto', 'approval') THEN
+    RAISE EXCEPTION 'Modo de entrada inválido.';
+  END IF;
+
+  UPDATE leagues
+  SET name = v_new_name,
+      join_mode = v_new_mode,
+      access_code_hash = CASE
+        WHEN p_access_code IS NOT NULL AND p_access_code <> '' THEN extensions.crypt(p_access_code, extensions.gen_salt('bf'))
+        ELSE access_code_hash
+      END
+  WHERE id = p_league_id;
+
+  RETURN QUERY
+  SELECT v_league.id, v_new_name, v_new_mode;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION delete_league(
+  p_league_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_user uuid := auth.uid();
+  v_league leagues%ROWTYPE;
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'É preciso estar autenticado.';
+  END IF;
+
+  SELECT * INTO v_league
+  FROM leagues
+  WHERE id = p_league_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liga não encontrada.';
+  END IF;
+
+  IF v_league.owner_id <> v_user THEN
+    RAISE EXCEPTION 'Apenas o criador da liga pode excluí-la.';
+  END IF;
+
+  DELETE FROM leagues WHERE id = p_league_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION get_public_leagues()
 RETURNS TABLE (
   league_id uuid,
@@ -362,7 +463,7 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT
     l.id AS league_id,
@@ -402,35 +503,39 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
+  WITH mine AS (
+    SELECT lm.id, lm.league_id, lm.role, lm.status, lm.created_at
+    FROM league_members lm
+    WHERE lm.user_id = auth.uid()
+  ),
+  counts AS (
+    SELECT
+      lm.league_id,
+      COUNT(*) FILTER (WHERE lm.status = 'active')  AS active_members,
+      COUNT(*) FILTER (WHERE lm.status = 'pending') AS pending_members
+    FROM league_members lm
+    WHERE lm.league_id IN (SELECT league_id FROM mine)
+    GROUP BY lm.league_id
+  )
   SELECT
-    lm.id AS membership_id,
-    l.id AS league_id,
-    l.name AS league_name,
+    mine.id         AS membership_id,
+    l.id            AS league_id,
+    l.name          AS league_name,
     l.join_mode,
-    lm.role AS membership_role,
-    lm.status AS membership_status,
-    (
-      SELECT COUNT(*)
-      FROM league_members lm2
-      WHERE lm2.league_id = l.id
-        AND lm2.status = 'active'
-    ) AS active_members,
-    (
-      SELECT COUNT(*)
-      FROM league_members lm3
-      WHERE lm3.league_id = l.id
-        AND lm3.status = 'pending'
-    ) AS pending_members,
+    mine.role       AS membership_role,
+    mine.status     AS membership_status,
+    COALESCE(counts.active_members,  0) AS active_members,
+    COALESCE(counts.pending_members, 0) AS pending_members,
     (l.owner_id = auth.uid()) AS is_owner,
-    lm.created_at
-  FROM league_members lm
-  JOIN leagues l ON l.id = lm.league_id
-  WHERE lm.user_id = auth.uid()
+    mine.created_at
+  FROM mine
+  JOIN leagues l ON l.id = mine.league_id
+  LEFT JOIN counts ON counts.league_id = mine.league_id
   ORDER BY
-    CASE lm.status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
-    lm.created_at DESC;
+    CASE mine.status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+    mine.created_at DESC;
 $$;
 
 CREATE OR REPLACE FUNCTION get_league_standings(
@@ -448,7 +553,7 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT
     lm.id AS membership_id,
@@ -487,7 +592,7 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
   SELECT
     lm.id AS membership_id,

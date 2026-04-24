@@ -394,8 +394,10 @@ function emptyLeagueHubState() {
     selectedLeagueId: null,
     selectedJoinLeagueId: null,
     loading: false,
+    refreshing: false,
     ready: false,
-    error: ''
+    error: '',
+    lastLoadedAt: 0
   };
 }
 
@@ -443,63 +445,126 @@ async function leagueRpc(fn, params) {
   return data || [];
 }
 
+const LEAGUE_HUB_FRESH_MS = 30_000;
+let _leagueHubInflight = null;
+
 async function loadLeagueHub(options = {}) {
   const force = !!options.force;
+  const onRefresh = typeof options.onRefresh === 'function' ? options.onRefresh : null;
 
   if (!currentUser || !_supabase) {
     leagueHubState = emptyLeagueHubState();
     return syncLeagueHubWindowState();
   }
 
-  if (leagueHubState.loading && !force) {
+  const fresh = leagueHubState.ready && (Date.now() - leagueHubState.lastLoadedAt) < LEAGUE_HUB_FRESH_MS;
+  if (fresh && !force) {
     return leagueHubState;
   }
 
-  leagueHubState.loading = true;
-  leagueHubState.error = '';
-
-  try {
-    const [catalog, memberships] = await Promise.all([
-      leagueRpc('get_public_leagues'),
-      leagueRpc('get_my_leagues')
-    ]);
-
-    leagueHubState.catalog = catalog;
-    leagueHubState.memberships = memberships;
-
-    const selectableMembership =
-      findLeagueMembership(leagueHubState.selectedLeagueId) ||
-      memberships.find(m => m.membership_status === 'active') ||
-      memberships[0] ||
-      null;
-
-    leagueHubState.selectedLeagueId = selectableMembership ? selectableMembership.league_id : null;
-
-    const joinTargetStillExists = (catalog || []).some(l => l.league_id === leagueHubState.selectedJoinLeagueId);
-    if (!joinTargetStillExists) {
-      const firstJoinable = (catalog || []).find(l => !findLeagueMembership(l.league_id));
-      leagueHubState.selectedJoinLeagueId = firstJoinable ? firstJoinable.league_id : ((catalog || [])[0]?.league_id || null);
-    }
-
-    const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
-    if (selectedMembership && selectedMembership.membership_status === 'active') {
-      leagueHubState.standings = await leagueRpc('get_league_standings', { p_league_id: selectedMembership.league_id });
-      leagueHubState.requests = isLeagueAdminMembership(selectedMembership.league_id)
-        ? await leagueRpc('get_league_pending_requests', { p_league_id: selectedMembership.league_id })
-        : [];
+  if (_leagueHubInflight) {
+    if (force) {
+      try { await _leagueHubInflight; } catch (_) {}
     } else {
-      leagueHubState.standings = [];
-      leagueHubState.requests = [];
+      return leagueHubState.ready ? leagueHubState : _leagueHubInflight;
     }
-
-    leagueHubState.ready = true;
-  } catch (err) {
-    leagueHubState.error = err?.message || 'Não foi possível carregar as ligas.';
-  } finally {
-    leagueHubState.loading = false;
   }
 
+  const hadData = leagueHubState.ready;
+  if (hadData) {
+    leagueHubState.refreshing = true;
+  } else {
+    leagueHubState.loading = true;
+  }
+  leagueHubState.error = '';
+
+  const run = (async () => {
+    try {
+      const [catalog, memberships] = await Promise.all([
+        leagueRpc('get_public_leagues'),
+        leagueRpc('get_my_leagues')
+      ]);
+
+      leagueHubState.catalog = catalog;
+      leagueHubState.memberships = memberships;
+
+      const selectableMembership =
+        findLeagueMembership(leagueHubState.selectedLeagueId) ||
+        memberships.find(m => m.membership_status === 'active') ||
+        memberships[0] ||
+        null;
+
+      leagueHubState.selectedLeagueId = selectableMembership ? selectableMembership.league_id : null;
+
+      const joinTargetStillExists = (catalog || []).some(l => l.league_id === leagueHubState.selectedJoinLeagueId);
+      if (!joinTargetStillExists) {
+        const firstJoinable = (catalog || []).find(l => !findLeagueMembership(l.league_id));
+        leagueHubState.selectedJoinLeagueId = firstJoinable ? firstJoinable.league_id : ((catalog || [])[0]?.league_id || null);
+      }
+
+      const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
+      if (selectedMembership && selectedMembership.membership_status === 'active') {
+        const [standings, requests] = await Promise.all([
+          leagueRpc('get_league_standings', { p_league_id: selectedMembership.league_id }),
+          isLeagueAdminMembership(selectedMembership.league_id)
+            ? leagueRpc('get_league_pending_requests', { p_league_id: selectedMembership.league_id })
+            : Promise.resolve([])
+        ]);
+        leagueHubState.standings = standings;
+        leagueHubState.requests = requests;
+      } else {
+        leagueHubState.standings = [];
+        leagueHubState.requests = [];
+      }
+
+      leagueHubState.ready = true;
+      leagueHubState.lastLoadedAt = Date.now();
+    } catch (err) {
+      leagueHubState.error = err?.message || 'Não foi possível carregar as ligas.';
+    } finally {
+      leagueHubState.loading = false;
+      leagueHubState.refreshing = false;
+      _leagueHubInflight = null;
+    }
+
+    return syncLeagueHubWindowState();
+  })();
+
+  _leagueHubInflight = run;
+
+  if (hadData && onRefresh) {
+    run.then(() => { try { onRefresh(leagueHubState); } catch (_) {} });
+    return leagueHubState;
+  }
+
+  return run;
+}
+
+async function refreshLeagueStandings() {
+  if (!currentUser || !_supabase) return leagueHubState;
+  const membership = findLeagueMembership(leagueHubState.selectedLeagueId);
+  if (!membership || membership.membership_status !== 'active') {
+    leagueHubState.standings = [];
+    leagueHubState.requests = [];
+    return syncLeagueHubWindowState();
+  }
+  try {
+    const [standings, requests] = await Promise.all([
+      leagueRpc('get_league_standings', { p_league_id: membership.league_id }),
+      isLeagueAdminMembership(membership.league_id)
+        ? leagueRpc('get_league_pending_requests', { p_league_id: membership.league_id })
+        : Promise.resolve([])
+    ]);
+    leagueHubState.standings = standings;
+    leagueHubState.requests = requests;
+  } catch (err) {
+    leagueHubState.error = err?.message || 'Não foi possível atualizar a liga.';
+  }
   return syncLeagueHubWindowState();
+}
+
+function invalidateLeagueHub() {
+  leagueHubState.lastLoadedAt = 0;
 }
 
 async function createLeagueHubLeague({ name, accessCode, joinMode }) {
@@ -514,6 +579,7 @@ async function createLeagueHubLeague({ name, accessCode, joinMode }) {
     leagueHubState.selectedLeagueId = createdLeagueId;
     leagueHubState.selectedJoinLeagueId = createdLeagueId;
   }
+  invalidateLeagueHub();
   await loadLeagueHub({ force: true });
   syncLeagueHubWindowState();
   return result;
@@ -527,6 +593,7 @@ async function joinLeagueHubLeague({ leagueId, accessCode }) {
 
   leagueHubState.selectedLeagueId = leagueId;
   leagueHubState.selectedJoinLeagueId = leagueId;
+  invalidateLeagueHub();
   await loadLeagueHub({ force: true });
   syncLeagueHubWindowState();
   return result;
@@ -537,22 +604,63 @@ async function reviewLeagueHubMembership({ membershipId, action }) {
     p_membership_id: membershipId,
     p_action: action
   });
-  await loadLeagueHub({ force: true });
+  // Optimistic: drop the request from local state so UI updates instantly.
+  leagueHubState.requests = (leagueHubState.requests || []).filter(r => r.membership_id !== membershipId);
+  if (action === 'approve' || action === 'accept' || action === 'approved') {
+    const membership = findLeagueMembership(leagueHubState.selectedLeagueId);
+    if (membership) membership.active_members = (membership.active_members || 0) + 1;
+  }
+  const membership = findLeagueMembership(leagueHubState.selectedLeagueId);
+  if (membership) membership.pending_members = Math.max(0, (membership.pending_members || 0) - 1);
+  syncLeagueHubWindowState();
+  refreshLeagueStandings();
   return result;
 }
 
 async function leaveLeagueHubLeague({ leagueId }) {
   await leagueRpc('leave_league', { p_league_id: leagueId });
-  await loadLeagueHub({ force: true });
+  leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
+  if (leagueHubState.selectedLeagueId === leagueId) {
+    const next = leagueHubState.memberships.find(m => m.membership_status === 'active') || leagueHubState.memberships[0] || null;
+    leagueHubState.selectedLeagueId = next ? next.league_id : null;
+    leagueHubState.standings = [];
+    leagueHubState.requests = [];
+  }
+  invalidateLeagueHub();
+  syncLeagueHubWindowState();
+  loadLeagueHub({ force: true });
 }
 
-async function updateLeagueHubLeague({ leagueId, name, accessCode }) {
+async function deleteLeagueHubLeague({ leagueId }) {
+  await leagueRpc('delete_league', { p_league_id: leagueId });
+  leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
+  leagueHubState.catalog = (leagueHubState.catalog || []).filter(l => l.league_id !== leagueId);
+  if (leagueHubState.selectedLeagueId === leagueId) {
+    const next = leagueHubState.memberships.find(m => m.membership_status === 'active') || leagueHubState.memberships[0] || null;
+    leagueHubState.selectedLeagueId = next ? next.league_id : null;
+    leagueHubState.standings = [];
+    leagueHubState.requests = [];
+  }
+  invalidateLeagueHub();
+  syncLeagueHubWindowState();
+  loadLeagueHub({ force: true });
+}
+
+async function updateLeagueHubLeague({ leagueId, name, accessCode, joinMode }) {
   const result = await leagueRpc('update_league_settings', {
     p_league_id: leagueId,
     p_name: name,
-    p_access_code: accessCode || null
+    p_access_code: accessCode || null,
+    p_join_mode: joinMode || null
   });
-  await loadLeagueHub({ force: true });
+  const membership = findLeagueMembership(leagueId);
+  if (membership && name) membership.league_name = name;
+  if (membership && joinMode) membership.join_mode = joinMode;
+  const catalogEntry = (leagueHubState.catalog || []).find(l => l.league_id === leagueId);
+  if (catalogEntry && name) catalogEntry.league_name = name;
+  if (catalogEntry && joinMode) catalogEntry.join_mode = joinMode;
+  invalidateLeagueHub();
+  syncLeagueHubWindowState();
   return result;
 }
 
@@ -595,3 +703,6 @@ window.joinLeagueHubLeague = joinLeagueHubLeague;
 window.reviewLeagueHubMembership = reviewLeagueHubMembership;
 window.leaveLeagueHubLeague = leaveLeagueHubLeague;
 window.updateLeagueHubLeague = updateLeagueHubLeague;
+window.deleteLeagueHubLeague = deleteLeagueHubLeague;
+window.refreshLeagueStandings = refreshLeagueStandings;
+window.invalidateLeagueHub = invalidateLeagueHub;
