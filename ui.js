@@ -379,24 +379,21 @@ function buildHeroProgressHtml(info) {
     `;
   }
 
-  // Fallback — liga global por XP total
-  const pct = Math.max(0, Math.min(100, Math.round((info.progress || 0) * 100)));
-  const xpInLeague = Math.max(0, player.totalXp - info.current.minXp);
-  const xpToNext = info.next ? (info.next.minXp - info.current.minXp) : 0;
-  const progressLine = info.next
-    ? `${xpInLeague}/${xpToNext} XP · ${info.next.emoji} ${info.next.name}`
-    : `${player.totalXp} XP · liga máxima`;
-
+  // Sem liga ativa — mostra CTA convidando a entrar (não inventa
+  // uma liga falsa "Bronze" baseada em tier de XP, que confundia
+  // o usuário achando que já estava competindo).
+  const ctaLine = currentUser
+    ? 'Crie ou entre em uma pra competir'
+    : 'Entre na sua conta pra competir';
   return `
-    <button class="hero-progress" onclick="setTab('liga')" aria-label="Ver liga">
+    <button class="hero-progress hero-progress-cta" onclick="setTab('liga')" aria-label="Entrar em uma liga">
       <div class="hero-progress-head">
         <span class="hero-progress-label">
-          <span class="hero-league-emoji">${info.current.emoji}</span>
-          Liga ${escapeHtml(info.current.name)}
+          <span class="hero-league-emoji">🏟️</span>
+          Sem liga ainda
         </span>
-        <span class="hero-progress-value">${escapeHtml(progressLine)}</span>
+        <span class="hero-progress-value">${escapeHtml(ctaLine)}</span>
       </div>
-      <div class="hero-progress-bar"><div class="hero-progress-fill" style="width:${pct}%"></div></div>
     </button>
   `;
 }
@@ -995,10 +992,16 @@ function renderLeague(forceReload = false) {
     return;
   }
 
-  // Stale-while-revalidate: se já temos dados, pinta imediatamente e atualiza em background.
+  // Stale-while-revalidate: se já temos dados (memória ou localStorage), pinta imediatamente
+  // e revalida em background. A primeira pintura é instantânea entre sessões.
+  if (!leagueHubState.ready && currentUser && _supabase) {
+    hydrateLeagueHubFromStorage();
+  }
+
   if (leagueHubState.ready) {
     paintLeague(pane);
-    if (forceReload || (Date.now() - leagueHubState.lastLoadedAt) > 30_000) {
+    const isStale = (Date.now() - leagueHubState.lastLoadedAt) > LEAGUE_HUB_FRESH_MS;
+    if (forceReload || isStale) {
       loadLeagueHub({ force: forceReload, onRefresh: () => paintLeague(pane) });
     }
     return;

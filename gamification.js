@@ -466,16 +466,79 @@ function setSelectedJoinLeague(leagueId) {
   syncLeagueHubWindowState();
 }
 
+const LEAGUE_RPC_TIMEOUT_MS = 20_000;
+
 async function leagueRpc(fn, params) {
   if (!currentUser) throw new Error('Entre na sua conta para usar ligas.');
   if (!_supabase) throw new Error('Supabase indisponível. Confira a configuração antes de usar ligas.');
-  const { data, error } = await _supabase.rpc(fn, params || {});
-  if (error) throw error;
-  return data || [];
+
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error('A conexão com o servidor está demorando. Tente de novo em instantes.')),
+      LEAGUE_RPC_TIMEOUT_MS
+    );
+  });
+
+  try {
+    const { data, error } = await Promise.race([
+      _supabase.rpc(fn, params || {}),
+      timeoutPromise
+    ]);
+    if (error) throw error;
+    return data || [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
-const LEAGUE_HUB_FRESH_MS = 30_000;
+const LEAGUE_HUB_FRESH_MS = 5 * 60_000;
+const LEAGUE_HUB_STORAGE_PREFIX = 'conduta_league_hub_v1:';
 let _leagueHubInflight = null;
+
+function leagueHubStorageKey() {
+  if (!currentUser || !currentUser.id) return null;
+  return LEAGUE_HUB_STORAGE_PREFIX + currentUser.id;
+}
+
+function persistLeagueHubState() {
+  const key = leagueHubStorageKey();
+  if (!key) return;
+  try {
+    const snapshot = {
+      catalog: leagueHubState.catalog || [],
+      memberships: leagueHubState.memberships || [],
+      standings: leagueHubState.standings || [],
+      requests: leagueHubState.requests || [],
+      selectedLeagueId: leagueHubState.selectedLeagueId || null,
+      selectedJoinLeagueId: leagueHubState.selectedJoinLeagueId || null,
+      lastLoadedAt: leagueHubState.lastLoadedAt || 0
+    };
+    localStorage.setItem(key, JSON.stringify(snapshot));
+  } catch (_) { /* quota/private mode — ignora */ }
+}
+
+function hydrateLeagueHubFromStorage() {
+  const key = leagueHubStorageKey();
+  if (!key) return false;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    leagueHubState.catalog = cached.catalog || [];
+    leagueHubState.memberships = cached.memberships || [];
+    leagueHubState.standings = cached.standings || [];
+    leagueHubState.requests = cached.requests || [];
+    leagueHubState.selectedLeagueId = cached.selectedLeagueId || null;
+    leagueHubState.selectedJoinLeagueId = cached.selectedJoinLeagueId || null;
+    leagueHubState.lastLoadedAt = cached.lastLoadedAt || 0;
+    leagueHubState.ready = true;
+    syncLeagueHubWindowState();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 async function loadLeagueHub(options = {}) {
   const force = !!options.force;
@@ -484,6 +547,10 @@ async function loadLeagueHub(options = {}) {
   if (!currentUser || !_supabase) {
     leagueHubState = emptyLeagueHubState();
     return syncLeagueHubWindowState();
+  }
+
+  if (!leagueHubState.ready) {
+    hydrateLeagueHubFromStorage();
   }
 
   const fresh = leagueHubState.ready && (Date.now() - leagueHubState.lastLoadedAt) < LEAGUE_HUB_FRESH_MS;
@@ -509,9 +576,23 @@ async function loadLeagueHub(options = {}) {
 
   const run = (async () => {
     try {
-      const [catalog, memberships] = await Promise.all([
+      // Otimização: dispara as 4 RPCs em paralelo, especulando que a liga
+      // selecionada continua sendo a mesma da última carga (caso comum).
+      // Se mudar, fazemos um segundo round-trip — mas no caminho feliz
+      // (1ª carga ou liga inalterada) economizamos metade do tempo.
+      const speculativeLeagueId = leagueHubState.selectedLeagueId;
+      const standingsPromise = speculativeLeagueId
+        ? leagueRpc('get_league_standings', { p_league_id: speculativeLeagueId }).catch(() => null)
+        : Promise.resolve(null);
+      const requestsPromise = speculativeLeagueId
+        ? leagueRpc('get_league_pending_requests', { p_league_id: speculativeLeagueId }).catch(() => null)
+        : Promise.resolve(null);
+
+      const [catalog, memberships, speculativeStandings, speculativeRequests] = await Promise.all([
         leagueRpc('get_public_leagues'),
-        leagueRpc('get_my_leagues')
+        leagueRpc('get_my_leagues'),
+        standingsPromise,
+        requestsPromise
       ]);
 
       leagueHubState.catalog = catalog;
@@ -533,14 +614,23 @@ async function loadLeagueHub(options = {}) {
 
       const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
       if (selectedMembership && selectedMembership.membership_status === 'active') {
-        const [standings, requests] = await Promise.all([
-          leagueRpc('get_league_standings', { p_league_id: selectedMembership.league_id }),
-          isLeagueAdminMembership(selectedMembership.league_id)
-            ? leagueRpc('get_league_pending_requests', { p_league_id: selectedMembership.league_id })
-            : Promise.resolve([])
-        ]);
-        leagueHubState.standings = standings;
-        leagueHubState.requests = requests;
+        const canReuseSpeculative =
+          selectedMembership.league_id === speculativeLeagueId &&
+          speculativeStandings !== null;
+
+        if (canReuseSpeculative) {
+          leagueHubState.standings = speculativeStandings;
+          leagueHubState.requests = speculativeRequests || [];
+        } else {
+          const [standings, requests] = await Promise.all([
+            leagueRpc('get_league_standings', { p_league_id: selectedMembership.league_id }),
+            isLeagueAdminMembership(selectedMembership.league_id)
+              ? leagueRpc('get_league_pending_requests', { p_league_id: selectedMembership.league_id })
+              : Promise.resolve([])
+          ]);
+          leagueHubState.standings = standings;
+          leagueHubState.requests = requests;
+        }
       } else {
         leagueHubState.standings = [];
         leagueHubState.requests = [];
@@ -548,6 +638,7 @@ async function loadLeagueHub(options = {}) {
 
       leagueHubState.ready = true;
       leagueHubState.lastLoadedAt = Date.now();
+      persistLeagueHubState();
     } catch (err) {
       leagueHubState.error = err?.message || 'Não foi possível carregar as ligas.';
     } finally {

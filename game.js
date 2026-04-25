@@ -925,17 +925,28 @@ function openModal(name) {
 function closeModal(name) {
   const m = document.getElementById('modal-' + name);
   if (m) m.style.display = 'none';
+  if (name === 'nohearts' && _heartTimerHandle) {
+    clearTimeout(_heartTimerHandle);
+    _heartTimerHandle = null;
+  }
 }
 
+var _heartTimerHandle = null;
 function updateHeartTimer() {
+  const modal = document.getElementById('modal-nohearts');
   const el = document.getElementById('next-heart-timer');
-  if (!el) return;
+  // Para o ciclo se o modal foi fechado — evita timers zumbis em background.
+  if (!el || !modal || modal.style.display === 'none') {
+    _heartTimerHandle = null;
+    return;
+  }
   const ms = timeUntilNextHeart();
-  if (ms <= 0) { el.textContent = 'agora!'; return; }
+  if (ms <= 0) { el.textContent = 'agora!'; _heartTimerHandle = null; return; }
   const min = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
   el.textContent = `${min}min ${sec}s`;
-  setTimeout(updateHeartTimer, 1000);
+  if (_heartTimerHandle) clearTimeout(_heartTimerHandle);
+  _heartTimerHandle = setTimeout(updateHeartTimer, 1000);
 }
 
 function buyHeartsWithGems() {

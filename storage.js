@@ -57,7 +57,7 @@ async function saveProgress(key, data) {
   // Se logado, também persiste no Supabase
   if (currentUser && _supabase) {
     try {
-      await _supabase
+      const { error } = await _supabase
         .from('user_progress')
         .upsert({
           user_id:    currentUser.id,
@@ -65,8 +65,11 @@ async function saveProgress(key, data) {
           data:       normalized,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id,key' });
+      if (error) throw error;
     } catch (e) {
-      // Falha silenciosa — localStorage já tem os dados
+      // localStorage segue como fonte da verdade. Logamos pra facilitar
+      // diagnóstico de RLS/rede sem assustar o usuário.
+      console.warn('[saveProgress] falha ao sincronizar com Supabase:', key, e?.message || e);
     }
   }
 }
