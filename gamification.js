@@ -326,20 +326,26 @@ function addGems(amount) {
 }
 
 // ── ACESSO AO NÍVEL ATUAL ─────────────────────────────────
-// Regra: free = 1 nível novo por dia; pro = ilimitado
+// Regras:
+//   1) todos os níveis ficam visíveis no mapa, mas só dá pra jogar
+//      sequencialmente — o próximo jogável é sempre player.currentLevel.
+//   2) free: 1 nível novo por dia (replays liberados).
 function canPlayLevel(levelId) {
   const level = getLevel(levelId);
   if (!level) return { ok: false, reason: 'not-found' };
-  if (level.number > unlockedLevelNumber()) {
-    return { ok: false, reason: 'locked' };
-  }
 
   const already = player.levelsCompleted.find(c => c.id === levelId);
   if (already) {
     return { ok: true, replay: true };
   }
 
-  // Se for o nível atual e já jogou outro hoje, precisa de pro
+  // Sequencial estrito: precisa concluir o nível anterior antes.
+  const nextPlayable = Math.max(1, player.currentLevel || 1);
+  if (level.number > nextPlayable) {
+    return { ok: false, reason: 'complete-previous', requires: nextPlayable };
+  }
+
+  // Free: 1 nível novo por dia (replays não contam).
   if (!player.isPro) {
     const playedToday = hasCompletionOnDay(todayKey());
     if (playedToday) {
@@ -416,12 +422,16 @@ function mockLeagueParticipants() {
 // ── HUB DE LIGAS PRIVADAS ────────────────────────────────
 function emptyLeagueHubState() {
   return {
-    catalog: [],
     memberships: [],
     standings: [],
     requests: [],
     selectedLeagueId: null,
     selectedJoinLeagueId: null,
+    // Busca de ligas públicas — só consulta servidor on demand
+    searchQuery: '',
+    searchResults: [],
+    searching: false,
+    searchError: '',
     loading: false,
     refreshing: false,
     ready: false,
@@ -506,7 +516,6 @@ function persistLeagueHubState() {
   if (!key) return;
   try {
     const snapshot = {
-      catalog: leagueHubState.catalog || [],
       memberships: leagueHubState.memberships || [],
       standings: leagueHubState.standings || [],
       requests: leagueHubState.requests || [],
@@ -525,7 +534,6 @@ function hydrateLeagueHubFromStorage() {
     const raw = localStorage.getItem(key);
     if (!raw) return false;
     const cached = JSON.parse(raw);
-    leagueHubState.catalog = cached.catalog || [];
     leagueHubState.memberships = cached.memberships || [];
     leagueHubState.standings = cached.standings || [];
     leagueHubState.requests = cached.requests || [];
@@ -576,10 +584,11 @@ async function loadLeagueHub(options = {}) {
 
   const run = (async () => {
     try {
-      // Otimização: dispara as 4 RPCs em paralelo, especulando que a liga
+      // Otimização: dispara as RPCs em paralelo, especulando que a liga
       // selecionada continua sendo a mesma da última carga (caso comum).
       // Se mudar, fazemos um segundo round-trip — mas no caminho feliz
       // (1ª carga ou liga inalterada) economizamos metade do tempo.
+      // (catalog/get_public_leagues foi removido — agora a busca é via search_public_leagues sob demanda.)
       const speculativeLeagueId = leagueHubState.selectedLeagueId;
       const standingsPromise = speculativeLeagueId
         ? leagueRpc('get_league_standings', { p_league_id: speculativeLeagueId }).catch(() => null)
@@ -588,14 +597,12 @@ async function loadLeagueHub(options = {}) {
         ? leagueRpc('get_league_pending_requests', { p_league_id: speculativeLeagueId }).catch(() => null)
         : Promise.resolve(null);
 
-      const [catalog, memberships, speculativeStandings, speculativeRequests] = await Promise.all([
-        leagueRpc('get_public_leagues'),
+      const [memberships, speculativeStandings, speculativeRequests] = await Promise.all([
         leagueRpc('get_my_leagues'),
         standingsPromise,
         requestsPromise
       ]);
 
-      leagueHubState.catalog = catalog;
       leagueHubState.memberships = memberships;
 
       const selectableMembership =
@@ -605,12 +612,6 @@ async function loadLeagueHub(options = {}) {
         null;
 
       leagueHubState.selectedLeagueId = selectableMembership ? selectableMembership.league_id : null;
-
-      const joinTargetStillExists = (catalog || []).some(l => l.league_id === leagueHubState.selectedJoinLeagueId);
-      if (!joinTargetStillExists) {
-        const firstJoinable = (catalog || []).find(l => !findLeagueMembership(l.league_id));
-        leagueHubState.selectedJoinLeagueId = firstJoinable ? firstJoinable.league_id : ((catalog || [])[0]?.league_id || null);
-      }
 
       const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
       if (selectedMembership && selectedMembership.membership_status === 'active') {
@@ -754,7 +755,7 @@ async function leaveLeagueHubLeague({ leagueId }) {
 async function deleteLeagueHubLeague({ leagueId }) {
   await leagueRpc('delete_league', { p_league_id: leagueId });
   leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
-  leagueHubState.catalog = (leagueHubState.catalog || []).filter(l => l.league_id !== leagueId);
+  leagueHubState.searchResults = (leagueHubState.searchResults || []).filter(l => l.league_id !== leagueId);
   if (leagueHubState.selectedLeagueId === leagueId) {
     const next = leagueHubState.memberships.find(m => m.membership_status === 'active') || leagueHubState.memberships[0] || null;
     leagueHubState.selectedLeagueId = next ? next.league_id : null;
@@ -776,12 +777,80 @@ async function updateLeagueHubLeague({ leagueId, name, accessCode, joinMode }) {
   const membership = findLeagueMembership(leagueId);
   if (membership && name) membership.league_name = name;
   if (membership && joinMode) membership.join_mode = joinMode;
-  const catalogEntry = (leagueHubState.catalog || []).find(l => l.league_id === leagueId);
-  if (catalogEntry && name) catalogEntry.league_name = name;
-  if (catalogEntry && joinMode) catalogEntry.join_mode = joinMode;
+  const searchEntry = (leagueHubState.searchResults || []).find(l => l.league_id === leagueId);
+  if (searchEntry && name) searchEntry.league_name = name;
+  if (searchEntry && joinMode) searchEntry.join_mode = joinMode;
   invalidateLeagueHub();
   syncLeagueHubWindowState();
   return result;
+}
+
+// ── BUSCA DE LIGAS PÚBLICAS ───────────────────────────────
+// Substituiu o catálogo pré-carregado: agora consultamos o servidor
+// somente quando o usuário digita um termo de busca.
+const LEAGUE_SEARCH_DEBOUNCE_MS = 300;
+const LEAGUE_SEARCH_MIN_LENGTH = 2;
+let _leagueSearchDebounceHandle = null;
+let _leagueSearchTokenCounter = 0;
+
+function clearLeagueSearch() {
+  if (_leagueSearchDebounceHandle) {
+    clearTimeout(_leagueSearchDebounceHandle);
+    _leagueSearchDebounceHandle = null;
+  }
+  leagueHubState.searchQuery = '';
+  leagueHubState.searchResults = [];
+  leagueHubState.searching = false;
+  leagueHubState.searchError = '';
+  syncLeagueHubWindowState();
+}
+
+async function runLeagueSearch(query, token, onUpdate) {
+  try {
+    const data = await leagueRpc('search_public_leagues', { p_query: query });
+    if (token !== _leagueSearchTokenCounter) return; // resposta atrasada — descarta
+    leagueHubState.searchResults = data || [];
+    leagueHubState.searching = false;
+    leagueHubState.searchError = '';
+  } catch (err) {
+    if (token !== _leagueSearchTokenCounter) return;
+    leagueHubState.searchResults = [];
+    leagueHubState.searching = false;
+    leagueHubState.searchError = err?.message || 'Não foi possível buscar ligas.';
+  }
+  syncLeagueHubWindowState();
+  if (typeof onUpdate === 'function') {
+    try { onUpdate(leagueHubState); } catch (_) {}
+  }
+}
+
+function searchPublicLeaguesHub(rawQuery, options = {}) {
+  const onUpdate = typeof options.onUpdate === 'function' ? options.onUpdate : null;
+  const query = (rawQuery || '').trim();
+  leagueHubState.searchQuery = rawQuery || '';
+
+  if (_leagueSearchDebounceHandle) {
+    clearTimeout(_leagueSearchDebounceHandle);
+    _leagueSearchDebounceHandle = null;
+  }
+
+  if (query.length < LEAGUE_SEARCH_MIN_LENGTH) {
+    leagueHubState.searchResults = [];
+    leagueHubState.searching = false;
+    leagueHubState.searchError = '';
+    syncLeagueHubWindowState();
+    return;
+  }
+
+  leagueHubState.searching = true;
+  leagueHubState.searchError = '';
+  syncLeagueHubWindowState();
+
+  const token = ++_leagueSearchTokenCounter;
+  _leagueSearchDebounceHandle = setTimeout(() => {
+    _leagueSearchDebounceHandle = null;
+    runLeagueSearch(query, token, onUpdate);
+  }, LEAGUE_SEARCH_DEBOUNCE_MS);
 }
 
 // ── EXPOSIÇÃO GLOBAL ──────────────────────────────────────
@@ -831,3 +900,5 @@ window.updateLeagueHubLeague = updateLeagueHubLeague;
 window.deleteLeagueHubLeague = deleteLeagueHubLeague;
 window.refreshLeagueStandings = refreshLeagueStandings;
 window.invalidateLeagueHub = invalidateLeagueHub;
+window.searchPublicLeaguesHub = searchPublicLeaguesHub;
+window.clearLeagueSearch = clearLeagueSearch;

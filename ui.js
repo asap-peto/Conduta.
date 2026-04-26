@@ -244,20 +244,21 @@ function renderBottomNav() {
   const nav = document.getElementById('home-tabs-nav');
   if (!nav) return;
   const tabs = [
-    { k: 'jogar',  label: 'Jornada',  ic: 'target' },
-    { k: 'liga',   label: 'Liga',     ic: 'trophy' },
-    { k: 'quests', label: 'Missões',  ic: 'flame'  },
-    { k: 'profile',label: 'Perfil',   ic: 'stethoscope' }
+    { k: 'jogar',   label: 'Jornada', ic: 'target' },
+    { k: 'liga',    label: 'Liga',    ic: 'trophy' },
+    { k: 'quests',  label: 'Missões', ic: 'flame'  },
+    { k: 'profile', label: 'Perfil',  ic: 'stethoscope' }
   ];
-  nav.innerHTML = tabs.map(t => {
-    if (t.k === 'profile') {
-      return `<button class="tab-btn" onclick="goProfile()">${icon(t.ic, 20)}<span>${t.label}</span></button>`;
-    }
-    return `<button class="tab-btn ${t.k === 'jogar' ? 'active' : ''}" data-tab="${t.k}">${icon(t.ic, 20)}<span>${t.label}</span></button>`;
-  }).join('');
+  nav.innerHTML = tabs.map(t =>
+    `<button class="tab-btn" data-tab="${t.k}">${icon(t.ic, 20)}<span>${t.label}</span></button>`
+  ).join('');
   nav.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => setTab(btn.dataset.tab));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab === 'profile') goProfile();
+      else setTab(btn.dataset.tab);
+    });
   });
+  if (typeof refreshNavActive === 'function') refreshNavActive();
 }
 
 function getTodayCompletions() {
@@ -461,7 +462,9 @@ function renderTodayCard() {
   const mode = MODES[selectedLevel.mode];
   const completion = player.levelsCompleted.find(c => c.id === selectedLevel.id);
   const alreadyDone = !!completion;
-  const isCurrent = !!today && selectedLevel.id === today.id;
+  const nextPlayable = Math.max(1, player.currentLevel || 1);
+  const isUpcoming = !alreadyDone && selectedLevel.number > nextPlayable;
+  const isCurrent = !alreadyDone && selectedLevel.number === nextPlayable;
   const firstOfDay = !hasCompletionOnDay(todayKey());
   const xpReward = previewLevelXp(selectedLevel, { firstOfDay, isReplay: alreadyDone });
   const gemsReward = alreadyDone ? 0 : (GEMS.levelComplete + GEMS.perfectScore);
@@ -470,10 +473,20 @@ function renderTodayCard() {
   const scoreBadge = completion
     ? (completion.perfect ? 'Perfeito · 100%' : `${completion.score}/${getLevelStepCount(selectedLevel)} acertos`)
     : null;
-  const kicker = isCurrent
-    ? (alreadyDone ? 'Repetir de hoje' : 'Nível de hoje')
-    : `Nível ${selectedLevel.number}`;
+  const kicker = isUpcoming
+    ? `Nível ${selectedLevel.number} · em breve`
+    : (isCurrent
+      ? (today && selectedLevel.id === today.id ? 'Nível de hoje' : 'Próximo nível')
+      : `Nível ${selectedLevel.number}`);
   const actionLabel = alreadyDone ? 'Praticar novamente' : 'Começar nível';
+  // Botão fica desabilitado em upcoming — aviso explica como liberar.
+  const lockedNote = isUpcoming
+    ? `<div class="today-locked-note">${icon('lock', 14, 'icn-inline')} Conclua o nível ${nextPlayable} para liberar este caso.</div>`
+    : '';
+  const actionBtn = isUpcoming
+    ? `<button class="btn-big" disabled>${icon('lock', 20, 'icn-inline')} Bloqueado</button>`
+    : `<button class="btn-big" onclick="startLevel(${selectedLevel.id})">${icon('play', 20, 'icn-inline')} ${actionLabel}</button>`;
+
   card.innerHTML = `
     <div class="today-top">
       <div class="today-art mode-${selectedLevel.mode}">${levelEmojiHtml(selectedLevel, 'case-emoji lg')}</div>
@@ -493,9 +506,8 @@ function renderTodayCard() {
       <span class="mini-badge badge-reward">${icon('bolt', 14, 'icn-inline')} ${xpBadge}</span>
       <span class="mini-badge badge-reward">${icon('gem', 14, 'icn-inline')} ${gemBadge}</span>
     </div>
-    <button class="btn-big" onclick="startLevel(${selectedLevel.id})">
-      ${icon('play', 20, 'icn-inline')} ${actionLabel}
-    </button>
+    ${lockedNote}
+    ${actionBtn}
   `;
 }
 
@@ -507,10 +519,11 @@ function snakeSide(idx) {
 
 function renderLevelMap() {
   const map = document.getElementById('level-map');
-  // Atual no topo + passados descendo; sem preview de futuros, sem gaps de recompensa
-  const visible = LEVELS
-    .filter(lv => lv.number <= unlockedLevelNumber())
-    .sort((a, b) => b.number - a.number);
+  if (!map) return;
+  // Mostra todos os níveis em ordem crescente — passados em cima, atual no
+  // meio (com avatar/COMEÇAR), próximos abaixo. A jogabilidade segue
+  // sequencial via canPlayLevel().
+  const visible = LEVELS.slice().sort((a, b) => a.number - b.number);
 
   const items = visible.map((lv, idx) => renderLevelNode(lv, idx)).join('');
   map.innerHTML = `
@@ -519,6 +532,14 @@ function renderLevelMap() {
       ${items}
     </div>
   `;
+
+  // Centraliza o nível atual na viewport — fica óbvio onde retomar.
+  requestAnimationFrame(() => {
+    const currentNode = map.querySelector('.snake-node.current');
+    if (currentNode && typeof currentNode.scrollIntoView === 'function') {
+      try { currentNode.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (_) {}
+    }
+  });
 }
 
 function renderRewardGap(side, completed, upcomingCurrent) {
@@ -535,22 +556,23 @@ function renderRewardGap(side, completed, upcomingCurrent) {
 function renderLevelNode(lv, idx) {
   const mode = MODES[lv.mode];
   const completion = player.levelsCompleted.find(c => c.id === lv.id);
-  const today = todaysLevel();
-  const unlocked = unlockedLevelNumber();
 
   const isCompleted = !!completion;
-  const isCurrent   = !!today && lv.id === today.id && !isCompleted;
-  const isLocked    = lv.number > unlocked;
+  // O "atual" agora segue o próximo nível jogável do player — não a virada
+  // diária. Quem completou o N de hoje vê o avatar pular pro N+1.
+  const nextPlayable = Math.max(1, player.currentLevel || 1);
+  const isCurrent   = !isCompleted && lv.number === nextPlayable;
+  const isUpcoming  = !isCompleted && !isCurrent && lv.number > nextPlayable;
 
   const classes = ['snake-node', `side-${snakeSide(idx)}`];
   if (isCompleted) classes.push('completed');
   if (isCurrent)   classes.push('current');
-  if (isLocked)    classes.push('locked');
+  if (isUpcoming)  classes.push('upcoming');
   if (homeSelectedLevelId === lv.id) classes.push('is-selected');
 
-  const ariaLabel = `Nível ${lv.number}: ${lv.title}${isLocked ? ' (bloqueado)' : ''}`;
+  const ariaLabel = `Nível ${lv.number}: ${lv.title}${isUpcoming ? ' (complete o anterior primeiro)' : ''}`;
 
-  // Completo → só número dentro do tile, sem label ao lado, abre modal de revisão
+  // Completo → só número dentro do tile, sem label ao lado, abre revisão
   if (isCompleted) {
     return `
       <button class="snake-node side-${snakeSide(idx)} completed minimal${homeSelectedLevelId === lv.id ? ' is-selected' : ''}" onclick="toggleTodayCard(${lv.id})" aria-label="${escapeHtml(ariaLabel)}" aria-pressed="${homeSelectedLevelId === lv.id ? 'true' : 'false'}">
@@ -559,7 +581,7 @@ function renderLevelNode(lv, idx) {
     `;
   }
 
-  // Current → tile + label completo
+  // Current → tile + label completo + avatar (a "pessoa" vai aqui)
   if (isCurrent) {
     const subLine = `${mode.label} · ${lv.estimatedMinutes} min`;
     return `
@@ -579,17 +601,19 @@ function renderLevelNode(lv, idx) {
     `;
   }
 
-  // Locked → fallback (não deve acontecer com filtro atual)
+  // Upcoming → visível, clicável (abre preview no today-card), sem avatar
   return `
-    <button class="${classes.join(' ')}" disabled aria-label="${escapeHtml(ariaLabel)}">
-      <div class="node-btn">${icon('lock', 26)}</div>
+    <button class="${classes.join(' ')} minimal" onclick="toggleTodayCard(${lv.id})" aria-label="${escapeHtml(ariaLabel)}" aria-pressed="${homeSelectedLevelId === lv.id ? 'true' : 'false'}">
+      <div class="node-btn"><span class="node-num-big">${lv.number}</span></div>
     </button>
   `;
 }
 
 function toggleTodayCard(levelId) {
   const level = getLevel(levelId);
-  if (!level || level.number > unlockedLevelNumber()) return;
+  if (!level) return;
+  // Permitimos preview de qualquer nível — o today-card mostra o estado
+  // (jogável, replay ou aguardando o anterior).
   homeSelectedLevelId = homeSelectedLevelId === levelId ? null : levelId;
   renderTodayCard();
   renderLevelMap();
@@ -660,12 +684,17 @@ function leagueRoleLabel(role) {
 function openLeagueModal(mode, leagueId) {
   leagueModalMode = mode;
   leagueEditingLeagueId = leagueId || null;
+  // Garante que a busca abra "limpa" — nada de resultados velhos.
+  if (mode === 'join' && typeof clearLeagueSearch === 'function') {
+    clearLeagueSearch();
+  }
   renderLeagueModal();
 }
 
 function closeLeagueModal() {
   leagueModalMode = null;
   leagueEditingLeagueId = null;
+  if (typeof clearLeagueSearch === 'function') clearLeagueSearch();
   renderLeagueModal();
 }
 
@@ -677,11 +706,12 @@ function renderLeagueModal() {
   }
 
   const canJoinMore = player.isPro || getJoinedLeagueCount() < getLeagueMembershipLimit();
-  const catalog = (leagueHubState.catalog || []).filter(l => {
+  // Resultados da busca filtrados — esconde ligas em que já estou (ativo/pendente).
+  const searchResults = (leagueHubState.searchResults || []).filter(l => {
     const m = findLeagueMembership(l.league_id);
     return !m || m.membership_status === 'rejected';
   });
-  const selectedJoin = catalog.find(l => l.league_id === leagueHubState.selectedJoinLeagueId) || catalog[0] || null;
+  const selectedJoin = searchResults.find(l => l.league_id === leagueHubState.selectedJoinLeagueId) || null;
 
   let body = '';
   let title = '';
@@ -718,16 +748,41 @@ function renderLeagueModal() {
     `;
   } else if (leagueModalMode === 'join') {
     title = 'Entrar em uma liga';
+    const rawQuery = leagueHubState.searchQuery || '';
+    const trimmed = rawQuery.trim();
+    const searching = !!leagueHubState.searching;
+    const searchError = leagueHubState.searchError || '';
+    const minLen = 2;
+
+    let resultsHtml = '';
+    if (trimmed.length < minLen) {
+      resultsHtml = `<div class="league-note">Digite pelo menos ${minLen} caracteres para buscar ligas pelo nome.</div>`;
+    } else if (searching) {
+      resultsHtml = `<div class="league-note">Buscando ligas…</div>`;
+    } else if (searchError) {
+      resultsHtml = `<div class="league-note league-note-error">${escapeHtml(searchError)}</div>`;
+    } else if (!searchResults.length) {
+      resultsHtml = `<div class="league-note">Nenhuma liga encontrada para “${escapeHtml(trimmed)}”. Peça para o admin checar o nome ou criar uma nova.</div>`;
+    } else {
+      resultsHtml = `
+        <div class="league-catalog" role="radiogroup" aria-label="Resultados da busca">
+          ${searchResults.map(league => `
+            <button type="button" class="league-catalog-card ${selectedJoin?.league_id === league.league_id ? 'selected' : ''}" onclick="chooseJoinLeague('${league.league_id}')">
+              <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
+              <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
     body = `
-      <p class="league-modal-desc">Escolha uma liga da lista e digite a senha que o admin compartilhou.</p>
-      <div class="league-catalog" role="radiogroup" aria-label="Ligas disponíveis">
-        ${catalog.length ? catalog.map(league => `
-          <button type="button" class="league-catalog-card ${selectedJoin?.league_id === league.league_id ? 'selected' : ''}" onclick="chooseJoinLeague('${league.league_id}')">
-            <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
-            <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
-          </button>
-        `).join('') : `<div class="league-note">Nenhuma liga pública disponível. Peça para o admin criar uma.</div>`}
-      </div>
+      <p class="league-modal-desc">Busque uma liga pelo nome e digite a senha que o admin compartilhou.</p>
+      <label class="league-field">
+        <span class="league-field-label">Buscar liga</span>
+        <input id="league-search-input" class="text-input" type="text" placeholder="Digite o nome da liga…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeHtml(rawQuery)}" oninput="handleLeagueSearchInput(event)">
+      </label>
+      ${resultsHtml}
       <form class="league-form" onsubmit="submitJoinLeague(event)">
         <label class="league-field">
           <span class="league-field-label">Senha da liga</span>
@@ -789,6 +844,14 @@ function renderLeagueModal() {
     </div>
   `;
 
+  // Captura foco/caret do elemento ativo dentro do modal — evita perder
+  // a posição do cursor enquanto o usuário digita na busca de ligas.
+  const prevActive = document.activeElement;
+  const prevInModal = prevActive && backdrop && backdrop.contains(prevActive);
+  const prevId = prevInModal && prevActive.id ? prevActive.id : null;
+  const prevSelStart = prevInModal && 'selectionStart' in prevActive ? prevActive.selectionStart : null;
+  const prevSelEnd = prevInModal && 'selectionEnd' in prevActive ? prevActive.selectionEnd : null;
+
   if (backdrop) {
     backdrop.outerHTML = html;
   } else {
@@ -797,11 +860,30 @@ function renderLeagueModal() {
     document.body.appendChild(wrap.firstElementChild);
   }
 
-  // foco inicial
+  // Restaura foco/caret se possível; senão aplica foco inicial padrão.
   setTimeout(() => {
+    if (prevId) {
+      const restored = document.getElementById(prevId);
+      if (restored) {
+        try { restored.focus({ preventScroll: true }); } catch (_) { restored.focus(); }
+        if (prevSelStart != null && typeof restored.setSelectionRange === 'function') {
+          try { restored.setSelectionRange(prevSelStart, prevSelEnd); } catch (_) {}
+        }
+        return;
+      }
+    }
     const focusTarget = document.querySelector('#league-modal input:not([disabled]), #league-modal button.btn-primary');
     if (focusTarget) focusTarget.focus();
   }, 30);
+}
+
+function handleLeagueSearchInput(event) {
+  const value = event && event.target ? event.target.value : '';
+  if (typeof searchPublicLeaguesHub !== 'function') return;
+  // Callback re-renderiza quando a resposta chega; o render preserva o foco.
+  searchPublicLeaguesHub(value, { onUpdate: () => renderLeagueModal() });
+  // Re-render imediato para refletir mudança de estado (ex.: "Buscando…").
+  renderLeagueModal();
 }
 
 async function submitCreateLeague(event) {
@@ -1043,10 +1125,6 @@ function paintLeague(pane) {
   const joinedCount = getJoinedLeagueCount();
   const canJoinMore = player.isPro || joinedCount < limit;
   const memberships = state.memberships || [];
-  const catalogAvailable = (state.catalog || []).some(l => {
-    const m = findLeagueMembership(l.league_id);
-    return !m || m.membership_status === 'rejected';
-  });
 
   const limitLabel = player.isPro
     ? 'Pro · ligas ilimitadas'
@@ -1066,7 +1144,7 @@ function paintLeague(pane) {
           <button class="league-chip league-chip-primary" onclick="openLeagueModal('create')" ${canJoinMore ? '' : 'disabled'} title="${canJoinMore ? 'Criar uma nova liga' : 'Limite de ligas atingido'}">
             <span class="league-chip-icon">＋</span> Criar
           </button>
-          <button class="league-chip" onclick="openLeagueModal('join')" ${canJoinMore && catalogAvailable ? '' : 'disabled'} title="${catalogAvailable ? 'Entrar numa liga existente' : 'Nenhuma liga disponível'}">
+          <button class="league-chip" onclick="openLeagueModal('join')" ${canJoinMore ? '' : 'disabled'} title="${canJoinMore ? 'Buscar e entrar em uma liga' : 'Limite de ligas atingido'}">
             <span class="league-chip-icon">🔑</span> Entrar
           </button>
         </div>
@@ -1087,7 +1165,7 @@ function paintLeague(pane) {
           <div class="league-empty-copy">Crie a sua ou peça a senha de um colega para entrar.</div>
           <div class="league-empty-cta">
             <button class="btn-primary" onclick="openLeagueModal('create')">Criar liga</button>
-            ${catalogAvailable ? `<button class="btn-ghost" onclick="openLeagueModal('join')">Entrar em uma liga</button>` : ''}
+            <button class="btn-ghost" onclick="openLeagueModal('join')">Entrar em uma liga</button>
           </div>
         </div>
       `}
@@ -1562,6 +1640,7 @@ window.leaveLeagueMembership = leaveLeagueMembership;
 window.openLeagueModal = openLeagueModal;
 window.closeLeagueModal = closeLeagueModal;
 window.renderLeagueModal = renderLeagueModal;
+window.handleLeagueSearchInput = handleLeagueSearchInput;
 window.confirmDeleteLeague = confirmDeleteLeague;
 window.toggleLeagueCard = toggleLeagueCard;
 window.toggleLeagueRequests = toggleLeagueRequests;

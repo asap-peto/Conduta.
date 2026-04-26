@@ -23,7 +23,7 @@
 
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=22">
   <link rel="icon" type="image/svg+xml" href="Conduta_mini_logo.svg">
 
   <!-- Supabase via CDN -->
@@ -69,10 +69,6 @@
         </div>
       </div>
     </div>
-
-    <nav class="home-tabs" id="home-tabs-nav">
-      <!-- Preenchido por renderBottomNav() -->
-    </nav>
 
     <div id="tab-jogar" class="tab-pane">
       <div class="level-map" id="level-map">
@@ -120,6 +116,12 @@
   <section class="view" id="view-profile" style="display:none">
     <!-- Preenchido por renderProfile() -->
   </section>
+
+  <!-- Bottom nav — fica fixo em home e profile. position: fixed no CSS,
+       então a posição no DOM é só por questão de organização. -->
+  <nav class="home-tabs" id="home-tabs-nav" style="display:none">
+    <!-- Preenchido por renderBottomNav() -->
+  </nav>
 
 </main>
 
@@ -228,9 +230,9 @@
 <script src="icons.js?v=10"></script>
 <script src="auth.js?v=13"></script>
 <script src="levels.js?v=11"></script>
-<script src="gamification.js?v=14"></script>
-<script src="ui.js?v=31"></script>
-<script src="game.js?v=18"></script>
+<script src="gamification.js?v=16"></script>
+<script src="ui.js?v=34"></script>
+<script src="game.js?v=20"></script>
 <script src="register-sw.js?v=25"></script>
 
 </body>

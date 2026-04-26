@@ -152,6 +152,10 @@ function showView(name) {
     if (el) el.style.display = (v === name) ? 'block' : 'none';
   });
   document.getElementById('app-header').style.display = (name === 'onboarding') ? 'none' : 'block';
+  // Bottom nav só faz sentido em home e profile.
+  const nav = document.getElementById('home-tabs-nav');
+  if (nav) nav.style.display = (name === 'home' || name === 'profile') ? 'flex' : 'none';
+  if (typeof refreshNavActive === 'function') refreshNavActive();
   window.scrollTo(0, 0);
 }
 
@@ -180,6 +184,10 @@ function goProfile() {
 }
 
 function setTab(name) {
+  // Permite trocar de aba a partir do profile — volta pra home antes.
+  if (currentView !== 'home') {
+    showView('home');
+  }
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === name);
   });
@@ -192,6 +200,24 @@ function setTab(name) {
   if (name === 'quests') renderQuests();
 }
 
+// Sincroniza qual botão da nav fica destacado com a view atual.
+function refreshNavActive() {
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(b => {
+    let active = false;
+    if (currentView === 'profile') {
+      active = b.dataset.tab === 'profile';
+    } else if (currentView === 'home') {
+      const visible = ['jogar', 'liga', 'quests'].find(t => {
+        const el = document.getElementById('tab-' + t);
+        return el && el.style.display !== 'none';
+      });
+      active = b.dataset.tab === (visible || 'jogar');
+    }
+    b.classList.toggle('active', active);
+  });
+}
+window.refreshNavActive = refreshNavActive;
+
 // ══════════════════════════════════════════════════════════
 // PLAY: iniciar nível
 // ══════════════════════════════════════════════════════════
@@ -201,6 +227,10 @@ function startLevel(levelId) {
   if (!access.ok) {
     if (access.reason === 'daily-limit') {
       openModal('pro');
+      return;
+    }
+    if (access.reason === 'complete-previous') {
+      toast(`Conclua o nível ${access.requires} primeiro.`);
       return;
     }
     if (access.reason === 'locked') {

@@ -473,7 +473,8 @@ ul     { list-style: none; }
   background: rgba(206, 252, 138, 0.1);
   color: var(--lime);
 }
-#view-home { padding-bottom: 84px; }
+#view-home,
+#view-profile { padding-bottom: 84px; }
 #tab-jogar { padding-bottom: 32px; }
 #tab-jogar.with-today-card { padding-bottom: 300px; }
 
@@ -818,8 +819,27 @@ ul     { list-style: none; }
   font-size: 12px;
   color: var(--muted);
 }
-.snake-node.upcoming { opacity: 0.55; pointer-events: none; }
+.snake-node.upcoming { opacity: 0.55; }
+.snake-node.upcoming:hover { opacity: 0.8; }
 .snake-node.upcoming .node-label { color: var(--muted); }
+.snake-node.upcoming .node-btn {
+  background: var(--bg2);
+  border-color: var(--border);
+  color: var(--muted);
+  box-shadow: 0 5px 0 0 rgba(0,0,0,0.3), inset 0 2px 0 rgba(255,255,255,0.04);
+}
+.today-locked-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
 
 /* Tile minimal: só número grande dentro, sem label ao lado */
 .snake-node.minimal { gap: 0; }
