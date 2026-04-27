@@ -44,6 +44,7 @@ let leagueModalMode = null; // 'create' | 'join' | 'edit' | null
 let leagueEditingLeagueId = null;
 let leagueRequestsOpen = false;
 let profileSettingsOpen = false;
+let levelMapExpanded = false;
 
 function renderOnboarding() {
   const view = document.getElementById('view-onboarding');
@@ -380,20 +381,57 @@ function buildHeroProgressHtml(info) {
     `;
   }
 
-  // Sem liga ativa — mostra CTA convidando a entrar (não inventa
-  // uma liga falsa "Bronze" baseada em tier de XP, que confundia
-  // o usuário achando que já estava competindo).
-  const ctaLine = currentUser
-    ? 'Crie ou entre em uma pra competir'
-    : 'Entre na sua conta pra competir';
+  // Sem liga ativa — em vez de uma CTA fraca, mostramos o streak do
+  // usuário com destaque. Streak é o gancho principal de habit-building
+  // (Duolingo style) e merece o espaço nobre da home.
+  return buildHeroStreakHtml();
+}
+
+function buildHeroStreakHtml() {
+  const streak = Math.max(0, player.streak || 0);
+  const best = Math.max(0, player.bestStreak || 0);
+  const freezes = Math.max(0, player.streakFreeze || 0);
+  const playedToday = player.lastPlayedDay === todayKey();
+  const hasStreak = streak > 0;
+  // "Em chamas" a partir de 7 dias — UI ganha glow extra e copy diferente.
+  const onFire = streak >= 7;
+
+  let title;
+  let subline;
+  let stateClass;
+  if (!hasStreak) {
+    stateClass = 'is-empty';
+    title = 'Comece seu streak';
+    subline = 'Termine um nível hoje pra acender a chama';
+  } else if (playedToday) {
+    stateClass = onFire ? 'is-active is-fire' : 'is-active';
+    title = `${streak} ${streak === 1 ? 'dia' : 'dias'} seguidos`;
+    subline = onFire ? 'Você está em chamas — volte amanhã' : 'Mandou bem hoje · volte amanhã';
+  } else {
+    stateClass = 'is-pending';
+    title = `${streak} ${streak === 1 ? 'dia' : 'dias'} seguidos`;
+    subline = 'Jogue hoje pra não quebrar';
+  }
+
+  const flameDigits = hasStreak ? streak : '·';
+
+  // Chips secundários: melhor streak + freezes disponíveis (só se relevantes).
+  const chips = [];
+  if (best > 0 && best !== streak) chips.push(`<span class="hero-streak-chip" title="Melhor streak">🏆 ${best}</span>`);
+  if (freezes > 0) chips.push(`<span class="hero-streak-chip" title="Streak freezes disponíveis">❄️ ${freezes}</span>`);
+
+  // Click leva pro perfil — onde mora o histórico de streak.
   return `
-    <button class="hero-progress hero-progress-cta" onclick="setTab('liga')" aria-label="Entrar em uma liga">
-      <div class="hero-progress-head">
-        <span class="hero-progress-label">
-          <span class="hero-league-emoji">🏟️</span>
-          Sem liga ainda
-        </span>
-        <span class="hero-progress-value">${escapeHtml(ctaLine)}</span>
+    <button class="hero-streak ${stateClass}" onclick="goProfile()" aria-label="Seu streak: ${title}">
+      <div class="hero-streak-flame" aria-hidden="true">
+        <div class="flame-glow"></div>
+        <div class="flame-emoji">${hasStreak ? '🔥' : '🕯️'}</div>
+        <div class="flame-number">${flameDigits}</div>
+      </div>
+      <div class="hero-streak-body">
+        <div class="hero-streak-title">${escapeHtml(title)}</div>
+        <div class="hero-streak-sub">${escapeHtml(subline)}</div>
+        ${chips.length ? `<div class="hero-streak-chips">${chips.join('')}</div>` : ''}
       </div>
     </button>
   `;
@@ -414,51 +452,21 @@ function buildMascotMessage() {
 function renderTodayCard() {
   const today = todaysLevel();
   const card = document.getElementById('today-card');
-  const jogarTab = document.getElementById('tab-jogar');
+  const tabJogar = document.getElementById('tab-jogar');
+  // Card aparece SOMENTE quando o usuário toca em um nível no mapa.
+  // Sem clique = sem card (volta a ser bottom-sheet contextual).
   const selectedLevel = homeSelectedLevelId ? getLevel(homeSelectedLevelId) : null;
 
-  if (!today && !selectedLevel) {
-    if (jogarTab) jogarTab.classList.add('with-today-card');
-    if (card) card.classList.remove('is-hidden');
-    const lastCompletion = player.levelsCompleted[player.levelsCompleted.length - 1];
-    const lastLevel = lastCompletion ? getLevel(lastCompletion.id) : null;
-    card.innerHTML = `
-      <div class="today-top">
-      <div class="today-art"><span class="case-emoji lg" aria-hidden="true">🏆</span></div>
-        <div class="today-head">
-          <div class="today-kicker">Temporada concluída</div>
-          <div class="today-title">Você fechou os ${TOTAL_LEVELS} níveis da beta</div>
-          <div class="today-meta">
-            <span>Seu progresso continua salvo</span>
-            <span class="dot">·</span>
-            <span>Novos casos podem entrar aqui depois</span>
-          </div>
-        </div>
-      </div>
-      <div class="today-badges">
-        <span class="mini-badge">${icon('bolt', 14, 'icn-inline')} ${player.totalXp} XP total</span>
-        <span class="mini-badge">${icon('flame', 14, 'icn-inline')} ${player.bestStreak} melhor streak</span>
-        <span class="mini-badge">${icon('book', 14, 'icn-inline')} ${player.levelsCompleted.length} casos resolvidos</span>
-      </div>
-      <div class="today-note">
-        ${lastLevel ? `Último caso concluído: ${escapeHtml(lastLevel.title)}.` : 'Escolha um caso anterior para revisar.'}
-      </div>
-      <button class="btn-big" onclick="${lastLevel ? `openPastLevel(${lastLevel.id})` : 'goProfile()'}">
-        ${icon('play', 20, 'icn-inline')} ${lastLevel ? 'Revisar último caso' : 'Ver meu perfil'}
-      </button>
-    `;
+  if (!selectedLevel) {
+    if (card) {
+      card.classList.add('is-hidden');
+      card.innerHTML = '';
+    }
+    if (tabJogar) tabJogar.classList.remove('with-today-card');
     return;
   }
-
-  const shouldShow = !!selectedLevel;
-  if (jogarTab) jogarTab.classList.toggle('with-today-card', shouldShow);
-  if (!shouldShow) {
-    card.classList.add('is-hidden');
-    card.innerHTML = '';
-    return;
-  }
-
   card.classList.remove('is-hidden');
+  if (tabJogar) tabJogar.classList.add('with-today-card');
   const mode = MODES[selectedLevel.mode];
   const completion = player.levelsCompleted.find(c => c.id === selectedLevel.id);
   const alreadyDone = !!completion;
@@ -520,26 +528,58 @@ function snakeSide(idx) {
 function renderLevelMap() {
   const map = document.getElementById('level-map');
   if (!map) return;
-  // Mostra todos os níveis em ordem crescente — passados em cima, atual no
-  // meio (com avatar/COMEÇAR), próximos abaixo. A jogabilidade segue
-  // sequencial via canPlayLevel().
-  const visible = LEVELS.slice().sort((a, b) => a.number - b.number);
+  // Caminho em ordem DECRESCENTE — sobe de baixo pra cima (Duolingo).
+  // Por padrão, exibe apenas uma janela compacta ao redor do nível atual:
+  // se o aluno tiver 37 níveis, ele não precisa rolar até o fim pra ver
+  // o que importa agora. Pode expandir o caminho completo se quiser.
+  const all = LEVELS.slice().sort((a, b) => b.number - a.number);
+  const totalLevels = all.length;
+  const current = Math.max(1, (player && player.currentLevel) || 1);
 
-  const items = visible.map((lv, idx) => renderLevelNode(lv, idx)).join('');
+  // Janela: 2 acima + atual + 2 abaixo. Se compactarmos, mostra também o
+  // último nível concluído logo antes pra dar continuidade visual.
+  const WINDOW = 2;
+  const visible = levelMapExpanded
+    ? all
+    : all.filter(lv => Math.abs(lv.number - current) <= WINDOW);
+
+  const items = visible.map((lv) => {
+    // Recalcula o índice no caminho original pra preservar o zigzag
+    // (snakeSide depende da posição global).
+    const globalIdx = all.findIndex(x => x.id === lv.id);
+    return renderLevelNode(lv, globalIdx);
+  }).join('');
+
+  const hiddenCount = totalLevels - visible.length;
+  const expandLabel = levelMapExpanded
+    ? 'Ver menos ↑'
+    : `Ver caminho completo · ${totalLevels} níveis ↓`;
+  const expandBtn = totalLevels > visible.length || levelMapExpanded
+    ? `<button type="button" class="path-expand" onclick="toggleLevelMapExpanded()">${expandLabel}</button>`
+    : '';
+
   map.innerHTML = `
-    <div class="snake-path">
+    <div class="snake-path ${levelMapExpanded ? 'is-expanded' : 'is-compact'}">
       <div class="snake-title">Caminho do plantão</div>
       ${items}
+      ${expandBtn}
     </div>
   `;
 
-  // Centraliza o nível atual na viewport — fica óbvio onde retomar.
-  requestAnimationFrame(() => {
-    const currentNode = map.querySelector('.snake-node.current');
-    if (currentNode && typeof currentNode.scrollIntoView === 'function') {
-      try { currentNode.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (_) {}
-    }
-  });
+  // Quando expandido, leva o aluno até o nível atual.
+  if (levelMapExpanded) {
+    requestAnimationFrame(() => {
+      const currentNode = map.querySelector('.snake-node.current');
+      if (currentNode && typeof currentNode.scrollIntoView === 'function') {
+        try { currentNode.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+      }
+    });
+  }
+}
+
+function toggleLevelMapExpanded() {
+  levelMapExpanded = !levelMapExpanded;
+  renderLevelMap();
 }
 
 function renderRewardGap(side, completed, upcomingCurrent) {
@@ -684,11 +724,16 @@ function leagueRoleLabel(role) {
 function openLeagueModal(mode, leagueId) {
   leagueModalMode = mode;
   leagueEditingLeagueId = leagueId || null;
-  // Garante que a busca abra "limpa" — nada de resultados velhos.
-  if (mode === 'join' && typeof clearLeagueSearch === 'function') {
-    clearLeagueSearch();
+  if (mode === 'join') {
+    if (typeof clearLeagueSearch === 'function') clearLeagueSearch();
+    // Limpa seleção pendente para o modal abrir sem nenhuma liga marcada.
+    if (typeof setSelectedJoinLeague === 'function') setSelectedJoinLeague(null);
   }
   renderLeagueModal();
+  if (mode === 'join' && typeof loadPublicLeaguesIndex === 'function') {
+    // Carrega o índice em background; quando volta, atualiza só os resultados.
+    loadPublicLeaguesIndex({ onUpdate: () => renderLeagueJoinResults() });
+  }
 }
 
 function closeLeagueModal() {
@@ -706,12 +751,6 @@ function renderLeagueModal() {
   }
 
   const canJoinMore = player.isPro || getJoinedLeagueCount() < getLeagueMembershipLimit();
-  // Resultados da busca filtrados — esconde ligas em que já estou (ativo/pendente).
-  const searchResults = (leagueHubState.searchResults || []).filter(l => {
-    const m = findLeagueMembership(l.league_id);
-    return !m || m.membership_status === 'rejected';
-  });
-  const selectedJoin = searchResults.find(l => l.league_id === leagueHubState.selectedJoinLeagueId) || null;
 
   let body = '';
   let title = '';
@@ -748,50 +787,26 @@ function renderLeagueModal() {
     `;
   } else if (leagueModalMode === 'join') {
     title = 'Entrar em uma liga';
+    // Layout fixo: input nunca é re-renderizado durante a digitação. As
+    // áreas #league-search-results e #league-join-action-row são as únicas
+    // que mudam quando o usuário digita ou clica numa liga.
     const rawQuery = leagueHubState.searchQuery || '';
-    const trimmed = rawQuery.trim();
-    const searching = !!leagueHubState.searching;
-    const searchError = leagueHubState.searchError || '';
-    const minLen = 2;
-
-    let resultsHtml = '';
-    if (trimmed.length < minLen) {
-      resultsHtml = `<div class="league-note">Digite pelo menos ${minLen} caracteres para buscar ligas pelo nome.</div>`;
-    } else if (searching) {
-      resultsHtml = `<div class="league-note">Buscando ligas…</div>`;
-    } else if (searchError) {
-      resultsHtml = `<div class="league-note league-note-error">${escapeHtml(searchError)}</div>`;
-    } else if (!searchResults.length) {
-      resultsHtml = `<div class="league-note">Nenhuma liga encontrada para “${escapeHtml(trimmed)}”. Peça para o admin checar o nome ou criar uma nova.</div>`;
-    } else {
-      resultsHtml = `
-        <div class="league-catalog" role="radiogroup" aria-label="Resultados da busca">
-          ${searchResults.map(league => `
-            <button type="button" class="league-catalog-card ${selectedJoin?.league_id === league.league_id ? 'selected' : ''}" onclick="chooseJoinLeague('${league.league_id}')">
-              <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
-              <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
-            </button>
-          `).join('')}
-        </div>
-      `;
-    }
-
     body = `
-      <p class="league-modal-desc">Busque uma liga pelo nome e digite a senha que o admin compartilhou.</p>
+      <p class="league-modal-desc">Digite o nome da liga; conforme você escreve, mostramos as ligas disponíveis. Depois cole a senha que o admin compartilhou.</p>
       <label class="league-field">
         <span class="league-field-label">Buscar liga</span>
         <input id="league-search-input" class="text-input" type="text" placeholder="Digite o nome da liga…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeHtml(rawQuery)}" oninput="handleLeagueSearchInput(event)">
       </label>
-      ${resultsHtml}
+      <div id="league-search-results" class="league-search-results"></div>
       <form class="league-form" onsubmit="submitJoinLeague(event)">
         <label class="league-field">
           <span class="league-field-label">Senha da liga</span>
-          <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha compartilhada pelo admin" autocomplete="off" autocapitalize="off" spellcheck="false" ${selectedJoin ? '' : 'disabled'} required>
+          <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha compartilhada pelo admin" autocomplete="off" autocapitalize="off" spellcheck="false" disabled required>
         </label>
         ${!canJoinMore ? `<div class="league-note">Faça upgrade para Pro ou saia de uma liga para abrir espaço.</div>` : ''}
         <div class="league-modal-actions">
           <button type="button" class="btn-ghost" onclick="closeLeagueModal()">Cancelar</button>
-          <button type="submit" class="btn-primary" ${(selectedJoin && canJoinMore) ? '' : 'disabled'}>Entrar${selectedJoin && selectedJoin.join_mode === 'approval' ? ' (solicitar)' : ''}</button>
+          <button type="submit" id="league-join-submit" class="btn-primary" disabled>Entrar</button>
         </div>
       </form>
     `;
@@ -875,15 +890,84 @@ function renderLeagueModal() {
     const focusTarget = document.querySelector('#league-modal input:not([disabled]), #league-modal button.btn-primary');
     if (focusTarget) focusTarget.focus();
   }, 30);
+
+  // Modo "join": pinta os resultados com o que já temos em memória.
+  // Não toca no input — a função abaixo só atualiza a área de resultados
+  // e o botão de submeter, então digitar fica fluido.
+  if (leagueModalMode === 'join') renderLeagueJoinResults();
+}
+
+// ── Render parcial: só mexe na área de resultados + botão de submit.
+// Crucial pra estabilidade da busca — o input nunca é tocado.
+function renderLeagueJoinResults() {
+  const resultsEl = document.getElementById('league-search-results');
+  const submitBtn = document.getElementById('league-join-submit');
+  const passwordInput = document.getElementById('league-join-password');
+  if (!resultsEl) return;
+
+  const canJoinMore = player.isPro || getJoinedLeagueCount() < getLeagueMembershipLimit();
+  const query = (leagueHubState.searchQuery || '').trim();
+  const indexLoading = !!leagueHubState.publicLeaguesLoading;
+  const indexError = leagueHubState.publicLeaguesError || '';
+  const indexLoaded = !!leagueHubState.publicLeaguesLoadedAt;
+
+  const filtered = (typeof filterPublicLeagues === 'function')
+    ? filterPublicLeagues(query)
+    : [];
+
+  // Limita o que mostramos pra não estourar o modal — quem busca refina o termo.
+  const MAX_RESULTS = 30;
+  const visible = filtered.slice(0, MAX_RESULTS);
+  const overflow = Math.max(0, filtered.length - visible.length);
+
+  const selectedId = leagueHubState.selectedJoinLeagueId;
+  const selectedJoin = visible.find(l => l.league_id === selectedId)
+    || filtered.find(l => l.league_id === selectedId)
+    || null;
+
+  let html = '';
+  if (!indexLoaded && indexLoading) {
+    html = `<div class="league-note">Carregando ligas disponíveis…</div>`;
+  } else if (indexError && !indexLoaded) {
+    html = `<div class="league-note league-note-error">${escapeHtml(indexError)}</div>`;
+  } else if (!filtered.length) {
+    if (!query) {
+      html = `<div class="league-note">Comece a digitar pra ver as ligas que combinam com o nome.</div>`;
+    } else {
+      html = `<div class="league-note">Nenhuma liga encontrada para “${escapeHtml(query)}”.</div>`;
+    }
+  } else {
+    html = `
+      <div class="league-catalog" role="radiogroup" aria-label="Ligas disponíveis">
+        ${visible.map(league => `
+          <button type="button" class="league-catalog-card ${selectedJoin && selectedJoin.league_id === league.league_id ? 'selected' : ''}" data-league-id="${league.league_id}" onclick="chooseJoinLeague('${league.league_id}')">
+            <span class="league-catalog-name">${escapeHtml(league.league_name)}</span>
+            <span class="league-catalog-sub">${leagueJoinModeLabel(league.join_mode)} · ${league.active_members} membros</span>
+          </button>
+        `).join('')}
+        ${overflow ? `<div class="league-note league-note-soft">+${overflow} ligas — refine sua busca para ver as outras.</div>` : ''}
+      </div>
+    `;
+  }
+  resultsEl.innerHTML = html;
+
+  // Atualiza submit + password sem re-renderizar o input de busca.
+  if (passwordInput) {
+    passwordInput.disabled = !selectedJoin;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = !(selectedJoin && canJoinMore);
+    submitBtn.textContent = (selectedJoin && selectedJoin.join_mode === 'approval')
+      ? 'Entrar (solicitar)'
+      : 'Entrar';
+  }
 }
 
 function handleLeagueSearchInput(event) {
-  const value = event && event.target ? event.target.value : '';
-  if (typeof searchPublicLeaguesHub !== 'function') return;
-  // Callback re-renderiza quando a resposta chega; o render preserva o foco.
-  searchPublicLeaguesHub(value, { onUpdate: () => renderLeagueModal() });
-  // Re-render imediato para refletir mudança de estado (ex.: "Buscando…").
-  renderLeagueModal();
+  const value = (event && event.target) ? event.target.value : '';
+  if (typeof setLeagueSearchQuery === 'function') setLeagueSearchQuery(value);
+  // Apenas atualiza a área de resultados — input fica intacto, sem perder foco.
+  renderLeagueJoinResults();
 }
 
 async function submitCreateLeague(event) {
@@ -911,7 +995,9 @@ async function submitCreateLeague(event) {
 
 function chooseJoinLeague(leagueId) {
   setSelectedJoinLeague(leagueId);
-  renderLeagueModal();
+  // Atualização parcial: highlight do card + estado do botão/senha.
+  // Evita full re-render que apagaria o que o usuário já digitou na senha.
+  renderLeagueJoinResults();
 }
 
 async function submitJoinLeague(event) {
@@ -1620,6 +1706,7 @@ window.renderOnboarding = renderOnboarding;
 window.renderHome = renderHome;
 window.updateHomeHeroVisibility = updateHomeHeroVisibility;
 window.renderLevelMap = renderLevelMap;
+window.toggleLevelMapExpanded = toggleLevelMapExpanded;
 window.toggleTodayCard = toggleTodayCard;
 window.renderLeague = renderLeague;
 window.toggleLeagueComposer = toggleLeagueComposer;
@@ -1641,6 +1728,7 @@ window.openLeagueModal = openLeagueModal;
 window.closeLeagueModal = closeLeagueModal;
 window.renderLeagueModal = renderLeagueModal;
 window.handleLeagueSearchInput = handleLeagueSearchInput;
+window.renderLeagueJoinResults = renderLeagueJoinResults;
 window.confirmDeleteLeague = confirmDeleteLeague;
 window.toggleLeagueCard = toggleLeagueCard;
 window.toggleLeagueRequests = toggleLeagueRequests;

@@ -427,11 +427,14 @@ function emptyLeagueHubState() {
     requests: [],
     selectedLeagueId: null,
     selectedJoinLeagueId: null,
-    // Busca de ligas públicas — só consulta servidor on demand
+    // Índice de ligas públicas — carregado uma vez quando o modal "Entrar"
+    // abre. Filtramos no cliente conforme o usuário digita pra evitar
+    // round-trip a cada tecla (a UI travava antes).
+    publicLeaguesIndex: [],
+    publicLeaguesLoading: false,
+    publicLeaguesError: '',
+    publicLeaguesLoadedAt: 0,
     searchQuery: '',
-    searchResults: [],
-    searching: false,
-    searchError: '',
     loading: false,
     refreshing: false,
     ready: false,
@@ -755,7 +758,7 @@ async function leaveLeagueHubLeague({ leagueId }) {
 async function deleteLeagueHubLeague({ leagueId }) {
   await leagueRpc('delete_league', { p_league_id: leagueId });
   leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
-  leagueHubState.searchResults = (leagueHubState.searchResults || []).filter(l => l.league_id !== leagueId);
+  leagueHubState.publicLeaguesIndex = (leagueHubState.publicLeaguesIndex || []).filter(l => l.league_id !== leagueId);
   if (leagueHubState.selectedLeagueId === leagueId) {
     const next = leagueHubState.memberships.find(m => m.membership_status === 'active') || leagueHubState.memberships[0] || null;
     leagueHubState.selectedLeagueId = next ? next.league_id : null;
@@ -777,80 +780,97 @@ async function updateLeagueHubLeague({ leagueId, name, accessCode, joinMode }) {
   const membership = findLeagueMembership(leagueId);
   if (membership && name) membership.league_name = name;
   if (membership && joinMode) membership.join_mode = joinMode;
-  const searchEntry = (leagueHubState.searchResults || []).find(l => l.league_id === leagueId);
-  if (searchEntry && name) searchEntry.league_name = name;
-  if (searchEntry && joinMode) searchEntry.join_mode = joinMode;
+  const indexEntry = (leagueHubState.publicLeaguesIndex || []).find(l => l.league_id === leagueId);
+  if (indexEntry && name) indexEntry.league_name = name;
+  if (indexEntry && joinMode) indexEntry.join_mode = joinMode;
   invalidateLeagueHub();
   syncLeagueHubWindowState();
   return result;
 }
 
-// ── BUSCA DE LIGAS PÚBLICAS ───────────────────────────────
-// Substituiu o catálogo pré-carregado: agora consultamos o servidor
-// somente quando o usuário digita um termo de busca.
-const LEAGUE_SEARCH_DEBOUNCE_MS = 300;
-const LEAGUE_SEARCH_MIN_LENGTH = 2;
-let _leagueSearchDebounceHandle = null;
-let _leagueSearchTokenCounter = 0;
+// ── ÍNDICE DE LIGAS PÚBLICAS ──────────────────────────────
+// Carregado uma vez quando o modal "Entrar" abre; depois filtramos no
+// cliente. Isso elimina o round-trip por tecla que estava travando o
+// pop-up. TTL curto pra refletir ligas novas em sessões longas.
+const PUBLIC_LEAGUES_INDEX_TTL_MS = 60_000;
+let _publicLeaguesIndexInflight = null;
 
 function clearLeagueSearch() {
-  if (_leagueSearchDebounceHandle) {
-    clearTimeout(_leagueSearchDebounceHandle);
-    _leagueSearchDebounceHandle = null;
-  }
   leagueHubState.searchQuery = '';
-  leagueHubState.searchResults = [];
-  leagueHubState.searching = false;
-  leagueHubState.searchError = '';
   syncLeagueHubWindowState();
 }
 
-async function runLeagueSearch(query, token, onUpdate) {
-  try {
-    const data = await leagueRpc('search_public_leagues', { p_query: query });
-    if (token !== _leagueSearchTokenCounter) return; // resposta atrasada — descarta
-    leagueHubState.searchResults = data || [];
-    leagueHubState.searching = false;
-    leagueHubState.searchError = '';
-  } catch (err) {
-    if (token !== _leagueSearchTokenCounter) return;
-    leagueHubState.searchResults = [];
-    leagueHubState.searching = false;
-    leagueHubState.searchError = err?.message || 'Não foi possível buscar ligas.';
-  }
-  syncLeagueHubWindowState();
-  if (typeof onUpdate === 'function') {
-    try { onUpdate(leagueHubState); } catch (_) {}
-  }
+function publicLeaguesIndexFresh() {
+  return (
+    leagueHubState.publicLeaguesIndex &&
+    leagueHubState.publicLeaguesIndex.length >= 0 &&
+    leagueHubState.publicLeaguesLoadedAt &&
+    (Date.now() - leagueHubState.publicLeaguesLoadedAt) < PUBLIC_LEAGUES_INDEX_TTL_MS
+  );
 }
 
-function searchPublicLeaguesHub(rawQuery, options = {}) {
+function loadPublicLeaguesIndex(options = {}) {
   const onUpdate = typeof options.onUpdate === 'function' ? options.onUpdate : null;
-  const query = (rawQuery || '').trim();
-  leagueHubState.searchQuery = rawQuery || '';
+  const force = !!options.force;
 
-  if (_leagueSearchDebounceHandle) {
-    clearTimeout(_leagueSearchDebounceHandle);
-    _leagueSearchDebounceHandle = null;
+  if (!force && publicLeaguesIndexFresh()) {
+    if (onUpdate) { try { onUpdate(leagueHubState); } catch (_) {} }
+    return Promise.resolve(leagueHubState.publicLeaguesIndex);
   }
 
-  if (query.length < LEAGUE_SEARCH_MIN_LENGTH) {
-    leagueHubState.searchResults = [];
-    leagueHubState.searching = false;
-    leagueHubState.searchError = '';
-    syncLeagueHubWindowState();
-    return;
+  if (_publicLeaguesIndexInflight) {
+    if (onUpdate) {
+      _publicLeaguesIndexInflight.then(() => { try { onUpdate(leagueHubState); } catch (_) {} });
+    }
+    return _publicLeaguesIndexInflight;
   }
 
-  leagueHubState.searching = true;
-  leagueHubState.searchError = '';
+  leagueHubState.publicLeaguesLoading = true;
+  leagueHubState.publicLeaguesError = '';
   syncLeagueHubWindowState();
 
-  const token = ++_leagueSearchTokenCounter;
-  _leagueSearchDebounceHandle = setTimeout(() => {
-    _leagueSearchDebounceHandle = null;
-    runLeagueSearch(query, token, onUpdate);
-  }, LEAGUE_SEARCH_DEBOUNCE_MS);
+  _publicLeaguesIndexInflight = (async () => {
+    try {
+      const data = await leagueRpc('get_public_leagues');
+      leagueHubState.publicLeaguesIndex = Array.isArray(data) ? data : [];
+      leagueHubState.publicLeaguesError = '';
+      leagueHubState.publicLeaguesLoadedAt = Date.now();
+    } catch (err) {
+      leagueHubState.publicLeaguesError = err?.message || 'Não foi possível carregar a lista de ligas.';
+      // Mantém o índice antigo se houver — UX degrada, mas não vira tela em branco.
+    } finally {
+      leagueHubState.publicLeaguesLoading = false;
+      _publicLeaguesIndexInflight = null;
+      syncLeagueHubWindowState();
+      if (onUpdate) { try { onUpdate(leagueHubState); } catch (_) {} }
+    }
+    return leagueHubState.publicLeaguesIndex;
+  })();
+
+  return _publicLeaguesIndexInflight;
+}
+
+function setLeagueSearchQuery(query) {
+  leagueHubState.searchQuery = typeof query === 'string' ? query : '';
+  syncLeagueHubWindowState();
+}
+
+// Filtra o índice no cliente — instantâneo, sem chamar servidor.
+// Esconde ligas em que o usuário já está (active/pending) — só mostra
+// rejeitadas (pra ele poder pedir de novo) e ligas das quais nunca participou.
+function filterPublicLeagues(query) {
+  const q = (query || '').trim().toLowerCase();
+  const list = leagueHubState.publicLeaguesIndex || [];
+  return list
+    .filter(l => {
+      const m = findLeagueMembership(l.league_id);
+      return !m || m.membership_status === 'rejected';
+    })
+    .filter(l => {
+      if (!q) return true;
+      const name = (l.league_name || '').toLowerCase();
+      return name.includes(q);
+    });
 }
 
 // ── EXPOSIÇÃO GLOBAL ──────────────────────────────────────
@@ -900,5 +920,7 @@ window.updateLeagueHubLeague = updateLeagueHubLeague;
 window.deleteLeagueHubLeague = deleteLeagueHubLeague;
 window.refreshLeagueStandings = refreshLeagueStandings;
 window.invalidateLeagueHub = invalidateLeagueHub;
-window.searchPublicLeaguesHub = searchPublicLeaguesHub;
+window.loadPublicLeaguesIndex = loadPublicLeaguesIndex;
+window.filterPublicLeagues = filterPublicLeagues;
+window.setLeagueSearchQuery = setLeagueSearchQuery;
 window.clearLeagueSearch = clearLeagueSearch;

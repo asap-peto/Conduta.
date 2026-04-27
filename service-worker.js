@@ -1,15 +1,15 @@
-var CACHE = 'conduta-v38';
+var CACHE = 'conduta-v44';
 var ASSETS = [
   './',
   './index.html',
-  './styles.css?v=22',
+  './styles.css?v=27',
   './storage.js?v=11',
   './icons.js?v=10',
   './auth.js?v=13',
   './levels.js?v=11',
   './levels-data.js?v=4',
-  './gamification.js?v=16',
-  './ui.js?v=34',
+  './gamification.js?v=17',
+  './ui.js?v=39',
   './game.js?v=20',
   './register-sw.js?v=25',
   './manifest.json',
