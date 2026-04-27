@@ -10,6 +10,31 @@ var playSession = null;  // estado da partida em curso
 
 const STORAGE_KEY_PLAYER = 'conduta_player_v2';
 
+function withBootTimeout(promise, ms) {
+  return new Promise(resolve => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, ms);
+
+    Promise.resolve(promise)
+      .then(value => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(null);
+      });
+  });
+}
+
 function clearPlayAsyncTasks(session) {
   const target = session || playSession;
   if (!target || !target.subStates) return;
@@ -42,7 +67,7 @@ async function boot() {
 
   if (typeof startAuthBootstrap === 'function') {
     try {
-      await startAuthBootstrap();
+      await withBootTimeout(startAuthBootstrap(), 1500);
     } catch (e) {}
   }
 

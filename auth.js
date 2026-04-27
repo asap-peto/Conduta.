@@ -234,7 +234,7 @@ function updateAuthUI() {
 }
 
 async function hydrateExistingSession() {
-  if (!_supabase) return;
+  if (!_supabase || !authCanRunHere()) return;
 
   try {
     const { data, error } = await _supabase.auth.getSession();
@@ -252,12 +252,37 @@ async function hydrateExistingSession() {
 }
 
 var authBootstrapPromise = null;
+function withAuthTimeout(promise, ms) {
+  return new Promise(resolve => {
+    var done = false;
+    var timer = setTimeout(function() {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, ms);
+
+    Promise.resolve(promise)
+      .then(function(value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(function() {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(null);
+      });
+  });
+}
+
 function startAuthBootstrap() {
   if (authBootstrapPromise) return authBootstrapPromise;
   authBootstrapPromise = (async function() {
     refreshAuthModalState();
     initAuth();
-    await hydrateExistingSession();
+    await withAuthTimeout(hydrateExistingSession(), 1200);
   })();
   return authBootstrapPromise;
 }
