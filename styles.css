@@ -1465,6 +1465,228 @@ ul     { list-style: none; }
 }
 .league-requests-caret { font-size: 13px; color: var(--muted); }
 .league-requests-toggle.open .league-requests-caret { color: var(--lime); }
+.league-requests-toggle.has-pending:not(.open) {
+  border-color: rgba(255,184,108,0.45);
+  background: rgba(255,184,108,0.06);
+}
+
+/* ── Hero compacto + botão "+" pra entrar/criar outra liga ────── */
+.league-hero-compact {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.league-hero-compact .league-hero-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.league-hero-compact .league-hero-text { flex: 1; min-width: 0; }
+.league-hero-compact .league-name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.league-hero-compact .league-sub {
+  font-size: 13px;
+  color: var(--white);
+}
+.league-hero-add {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: rgba(206,252,138,0.12);
+  border: 1px solid rgba(206,252,138,0.45);
+  color: var(--lime);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background .15s ease, transform .1s ease;
+}
+.league-hero-add:hover { background: rgba(206,252,138,0.22); }
+.league-hero-add:active { transform: scale(0.94); }
+.league-hero-add[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* ── Empty state v2 (Discord/Strava-inspired) ─────────────────── */
+.league-empty-v2 {
+  text-align: center;
+  padding: 28px 18px 32px;
+}
+.league-empty-emoji {
+  font-size: 56px;
+  line-height: 1;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 6px 14px rgba(206,252,138,0.18));
+}
+.league-empty-v2 .league-empty-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+.league-empty-v2 .league-empty-copy {
+  font-size: 14px;
+  color: var(--muted);
+  max-width: 320px;
+  margin: 0 auto 18px;
+  line-height: 1.45;
+}
+.league-empty-primary {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto 8px;
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.league-empty-secondary {
+  display: block;
+  margin: 6px auto 0;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.league-empty-secondary:hover { color: var(--lime); }
+
+/* ── Pill de alerta no card (admin com pedidos novos) ─────────── */
+.league-pill.alert {
+  border-color: rgba(255,184,108,0.45);
+  background: rgba(255,184,108,0.1);
+  color: var(--orange);
+}
+
+/* ── Botão "Convidar" no card (compartilha link) ──────────────── */
+.league-icon-btn.invite {
+  border-color: rgba(206,252,138,0.4);
+  color: var(--lime);
+  background: rgba(206,252,138,0.06);
+}
+.league-icon-btn.invite:hover {
+  background: rgba(206,252,138,0.14);
+  border-color: rgba(206,252,138,0.7);
+}
+
+/* ── Chip "sua posição" (Duolingo-style momentum) ─────────────── */
+.league-rank-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 4px 0 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(206,252,138,0.1), rgba(206,252,138,0.02));
+  border: 1px solid rgba(206,252,138,0.25);
+}
+.league-rank-chip .rank-num {
+  flex-shrink: 0;
+  min-width: 44px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--lime);
+  text-align: center;
+}
+.league-rank-chip .rank-text {
+  font-size: 12px;
+  color: var(--white);
+  line-height: 1.4;
+}
+.league-rank-chip .rank-text strong { color: var(--lime); }
+
+/* ── Action sheet (entrar/criar) ─────────────────────────────── */
+.league-add-sheet {
+  max-width: 420px;
+  padding: 22px;
+}
+.league-add-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--white);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .1s ease;
+}
+.league-add-option:first-of-type { margin-top: 14px; }
+.league-add-option:hover {
+  border-color: rgba(206,252,138,0.4);
+  background: rgba(206,252,138,0.04);
+}
+.league-add-option:active { transform: scale(0.98); }
+.league-add-icon {
+  flex-shrink: 0;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: rgba(206,252,138,0.12);
+  color: var(--lime);
+  font-size: 22px;
+  font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.league-add-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.league-add-text strong { font-size: 15px; font-weight: 700; color: var(--white); }
+.league-add-text small { font-size: 12px; color: var(--muted); }
+
+/* Pending state — visual mais sutil pra cards ainda aguardando aprovação */
+.league-membership-card.is-pending {
+  opacity: 0.78;
+  border-style: dashed;
+}
+
+/* ── Invite confirm sheet (Discord-style 1-click join) ────────── */
+.league-invite-card {
+  max-width: 380px;
+  text-align: center;
+  padding: 28px 22px 22px;
+}
+.league-invite-emoji {
+  font-size: 44px;
+  line-height: 1;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 6px 14px rgba(206,252,138,0.22));
+}
+.league-invite-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lime);
+  margin-bottom: 6px;
+}
+.league-invite-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--white);
+  margin: 0 0 6px;
+  word-break: break-word;
+}
+.league-invite-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+.league-invite-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.league-invite-actions .btn-ghost,
+.league-invite-actions .btn-primary {
+  flex: 1;
+}
 .league-membership-main:hover .league-membership-name { color: var(--lime); }
 .league-membership-actions {
   grid-column: 2;
@@ -1677,6 +1899,8 @@ ul     { list-style: none; }
   align-items: center;
   gap: 12px;
 }
+.quest-card.complete { border-color: rgba(206, 252, 138, 0.35); }
+.quest-card.claimed { opacity: 0.78; }
 .quest-icon { font-size: 28px; flex-shrink: 0; }
 .quest-body { flex: 1; }
 .quest-title { font-weight: 600; font-size: 15px; margin-bottom: 3px; }

@@ -154,11 +154,11 @@ function onbStep2Html() {
 function onbStep3Html() {
   return `
     <div class="onb-title">Como a jornada funciona</div>
-    <div class="onb-sub">Sem meta artificial e sem cronômetro. A ideia é simples: um caso novo por dia.</div>
+    <div class="onb-sub">Sem meta artificial e sem cronômetro. A ideia é simples: avance no seu ritmo.</div>
     <div class="takeaway-card">
       <div class="takeaway-title">Seu ritmo no Conduta</div>
       <ul class="takeaway-list">
-        <li>1 nível novo por dia para manter o hábito</li>
+        <li>Níveis novos liberados em sequência, sem limite diário por enquanto</li>
         <li>Replay liberado para revisar casos antigos quando quiser</li>
         <li>Streak, XP e liga semanal para dar contexto ao progresso</li>
       </ul>
@@ -441,9 +441,7 @@ function buildMascotMessage() {
   if (isSeasonComplete()) return 'Você zerou a temporada beta. Hora de revisar seus casos favoritos.';
   if (!player.lastPlayedDay) return 'Pronto pro seu primeiro plantão? Toque no nível abaixo.';
   if (player.lastPlayedDay === todayKey()) {
-    return player.isPro
-      ? 'Já jogou hoje, Pro. Quer mais um caso?'
-      : 'Plantão de hoje concluído. Você ainda pode revisar níveis passados.';
+    return 'Plantão de hoje concluído. Se quiser, já dá pra seguir para o próximo caso.';
   }
   const today = todaysLevel();
   return `Paciente esperando! Nível ${today ? today.number : player.currentLevel} está pronto.`;
@@ -721,13 +719,229 @@ function leagueRoleLabel(role) {
   return 'Membro';
 }
 
+// Quando entra via convite (link/colado), guardamos o code aqui pra
+// pré-preencher o input de senha no próximo render do modal.
+let pendingInviteCode = null;
+
+function buildLeagueInviteUrl(leagueId, code) {
+  const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : 'https://conduta.cc';
+  const base = `${origin}/?join=${encodeURIComponent(leagueId)}`;
+  return code ? `${base}&code=${encodeURIComponent(code)}` : base;
+}
+
+function buildLeagueInviteText(leagueName, code, link) {
+  const lines = [
+    `Bora competir comigo na liga "${leagueName}" no Conduta?`,
+    code ? `Código: ${code}` : '',
+    link
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+async function copyLeagueInvite(leagueId) {
+  const membership = (typeof findLeagueMembership === 'function') ? findLeagueMembership(leagueId) : null;
+  if (!membership) { toast('Liga não encontrada.'); return; }
+  const code = (typeof getLeagueInviteCode === 'function') ? getLeagueInviteCode(leagueId) : '';
+  const link = buildLeagueInviteUrl(leagueId, code);
+  const text = buildLeagueInviteText(membership.league_name, code, link);
+
+  // Mobile: Web Share API (WhatsApp, Telegram, Mail, etc).
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `Liga ${membership.league_name}`, text });
+      return;
+    } catch (_) { /* usuário cancelou — cai no fallback */ }
+  }
+  // Desktop fallback: clipboard.
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(code
+      ? 'Convite copiado! Cole no WhatsApp e mande pro pessoal.'
+      : 'Link copiado. Compartilhe a senha à parte.');
+    return;
+  } catch (_) {}
+  // Último fallback: prompt manual.
+  try { window.prompt('Copie o convite abaixo:', text); } catch (_) {}
+}
+
+// Lê ?join=<id>&code=<plain> da URL na entrada do app. Se logado,
+// abre o modal de entrada já com a liga selecionada e a senha pronta.
+// Se não logado, guarda e retoma após o login.
+function processLeagueDeepLink() {
+  if (typeof URLSearchParams !== 'function') return;
+  let params;
+  try { params = new URLSearchParams(location.search || ''); } catch (_) { return; }
+  let leagueId = params.get('join');
+  let code = params.get('code') || '';
+
+  // Se não tem na URL, tenta retomar do sessionStorage (caso pós-login).
+  if (!leagueId) {
+    try {
+      const raw = sessionStorage.getItem('conduta_pending_join');
+      if (raw) {
+        const stash = JSON.parse(raw) || {};
+        leagueId = stash.leagueId || '';
+        code = stash.code || code;
+      }
+    } catch (_) {}
+  }
+  if (!leagueId) return;
+
+  // Limpa pra não reabrir o modal a cada navegação/refresh.
+  try {
+    const newUrl = location.pathname + (location.hash || '');
+    history.replaceState(null, '', newUrl);
+  } catch (_) {}
+  try { sessionStorage.removeItem('conduta_pending_join'); } catch (_) {}
+
+  if (!currentUser) {
+    // Salva pra retomar depois do login + abre modal de auth.
+    try {
+      sessionStorage.setItem('conduta_pending_join', JSON.stringify({ leagueId, code }));
+    } catch (_) {}
+    if (typeof openLoginModal === 'function') openLoginModal();
+    toast('Faça login para entrar na liga do convite.');
+    return;
+  }
+
+  // Já é membro? Não chama RPC — só pula pra liga e mostra um toast.
+  const existing = (typeof findLeagueMembership === 'function')
+    ? findLeagueMembership(leagueId)
+    : null;
+  if (existing) {
+    if (typeof setTab === 'function') setTab('liga');
+    if (typeof setSelectedLeagueHubLeague === 'function') {
+      setSelectedLeagueHubLeague(leagueId);
+    }
+    renderLeague();
+    toast(existing.membership_status === 'pending'
+      ? 'Você já tem um pedido nessa liga.'
+      : `Você já está em "${existing.league_name}".`);
+    return;
+  }
+
+  // Caminho rápido: link com code → confirma e entra direto, 1 toque.
+  if (code) {
+    showLeagueInviteConfirm(leagueId, code);
+    return;
+  }
+
+  // Caminho lento (link sem code): cai no modal de busca pré-selecionado
+  // pra usuário digitar a senha manualmente.
+  pendingInviteCode = null;
+  if (typeof setSelectedJoinLeague === 'function') setSelectedJoinLeague(leagueId);
+  if (typeof setTab === 'function') setTab('liga');
+  openLeagueModal('join');
+  toast('Liga selecionada — digite a senha pra entrar.');
+}
+
+// Mini-prompt estilo Discord: "Entrar em 'Liga X'?" → 1 toque entra.
+// Quando o catálogo público ainda não carregou, mostramos placeholder e
+// atualizamos o nome assim que vier. Sem campo de senha, sem busca.
+let _inviteConfirmState = null;
+function showLeagueInviteConfirm(leagueId, code) {
+  _inviteConfirmState = { leagueId, code, submitting: false };
+
+  // Garante que o catálogo seja buscado em background pra mostrar o nome.
+  if (typeof loadPublicLeaguesIndex === 'function') {
+    loadPublicLeaguesIndex({ onUpdate: () => renderLeagueInviteConfirm() });
+  }
+  if (typeof setTab === 'function') setTab('liga');
+  renderLeagueInviteConfirm();
+}
+
+function renderLeagueInviteConfirm() {
+  if (!_inviteConfirmState) {
+    const old = document.getElementById('league-invite-confirm');
+    if (old) old.remove();
+    return;
+  }
+  const { leagueId, submitting } = _inviteConfirmState;
+  const fullIndex = (leagueHubState && leagueHubState.publicLeaguesIndex) || [];
+  const match = fullIndex.find(l => l.league_id === leagueId) || null;
+  const indexLoading = !!(leagueHubState && leagueHubState.publicLeaguesLoading);
+
+  const name = match ? match.league_name : '';
+  const sub = match
+    ? `${leagueJoinModeLabel(match.join_mode)} · ${match.active_members} membros`
+    : (indexLoading ? 'Confirmando convite…' : 'Liga privada');
+  const isApproval = match && match.join_mode === 'approval';
+  const primaryLabel = submitting
+    ? 'Entrando…'
+    : (isApproval ? 'Solicitar entrada' : 'Entrar na liga');
+
+  const html = `
+    <div class="modal-backdrop league-modal-backdrop" id="league-invite-confirm" onclick="if(event.target===this)dismissLeagueInviteConfirm()">
+      <div class="modal-card league-invite-card">
+        <button class="modal-close" onclick="dismissLeagueInviteConfirm()" aria-label="Fechar" ${submitting ? 'disabled' : ''}>✕</button>
+        <div class="league-invite-emoji">🔗</div>
+        <div class="league-invite-kicker">Convite recebido</div>
+        <h2 class="league-invite-name">${name ? escapeHtml(name) : 'Liga do convite'}</h2>
+        <div class="league-invite-sub">${escapeHtml(sub)}</div>
+        ${isApproval ? `<div class="league-note league-note-soft">Esta liga exige aprovação — seu pedido vai pra fila do admin.</div>` : ''}
+        <div class="league-modal-actions league-invite-actions">
+          <button type="button" class="btn-ghost" onclick="dismissLeagueInviteConfirm()" ${submitting ? 'disabled' : ''}>Cancelar</button>
+          <button type="button" class="btn-primary" onclick="acceptLeagueInvite()" ${submitting ? 'disabled' : ''}>${primaryLabel}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const existing = document.getElementById('league-invite-confirm');
+  if (existing) {
+    existing.outerHTML = html;
+  } else {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstElementChild);
+  }
+}
+
+function dismissLeagueInviteConfirm() {
+  if (_inviteConfirmState && _inviteConfirmState.submitting) return;
+  _inviteConfirmState = null;
+  const el = document.getElementById('league-invite-confirm');
+  if (el) el.remove();
+}
+
+async function acceptLeagueInvite() {
+  if (!_inviteConfirmState || _inviteConfirmState.submitting) return;
+  const { leagueId, code } = _inviteConfirmState;
+  _inviteConfirmState.submitting = true;
+  renderLeagueInviteConfirm();
+  try {
+    const result = await joinLeagueHubLeague({ leagueId, accessCode: code });
+    const status = result?.[0]?.membership_status;
+    const fullIndex = (leagueHubState && leagueHubState.publicLeaguesIndex) || [];
+    const match = fullIndex.find(l => l.league_id === leagueId);
+    const name = match ? match.league_name : 'liga';
+    toast(status === 'pending'
+      ? `Pedido enviado pra "${name}".`
+      : `Você entrou em "${name}"!`);
+    _inviteConfirmState = null;
+    const el = document.getElementById('league-invite-confirm');
+    if (el) el.remove();
+    if (typeof setSelectedLeagueHubLeague === 'function') {
+      setSelectedLeagueHubLeague(leagueId);
+    }
+    renderLeague();
+  } catch (err) {
+    _inviteConfirmState.submitting = false;
+    renderLeagueInviteConfirm();
+    toast(err?.message || 'Não foi possível aceitar o convite.');
+  }
+}
+
 function openLeagueModal(mode, leagueId) {
   leagueModalMode = mode;
   leagueEditingLeagueId = leagueId || null;
   if (mode === 'join') {
     if (typeof clearLeagueSearch === 'function') clearLeagueSearch();
-    // Limpa seleção pendente para o modal abrir sem nenhuma liga marcada.
-    if (typeof setSelectedJoinLeague === 'function') setSelectedJoinLeague(null);
+    // Limpa seleção pendente para o modal abrir sem nenhuma liga marcada
+    // — exceto quando estamos vindo de um convite (deep-link).
+    if (!pendingInviteCode && typeof setSelectedJoinLeague === 'function') {
+      setSelectedJoinLeague(null);
+    }
   }
   renderLeagueModal();
   if (mode === 'join' && typeof loadPublicLeaguesIndex === 'function') {
@@ -787,12 +1001,9 @@ function renderLeagueModal() {
     `;
   } else if (leagueModalMode === 'join') {
     title = 'Entrar em uma liga';
-    // Layout fixo: input nunca é re-renderizado durante a digitação. As
-    // áreas #league-search-results e #league-join-action-row são as únicas
-    // que mudam quando o usuário digita ou clica numa liga.
     const rawQuery = leagueHubState.searchQuery || '';
     body = `
-      <p class="league-modal-desc">Digite o nome da liga; conforme você escreve, mostramos as ligas disponíveis. Depois cole a senha que o admin compartilhou.</p>
+      <p class="league-modal-desc">Tem um link de convite? Cole no navegador e a liga abre direto. Senão, busque pelo nome abaixo.</p>
       <label class="league-field">
         <span class="league-field-label">Buscar liga</span>
         <input id="league-search-input" class="text-input" type="text" placeholder="Digite o nome da liga…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeHtml(rawQuery)}" oninput="handleLeagueSearchInput(event)">
@@ -801,7 +1012,7 @@ function renderLeagueModal() {
       <form class="league-form" onsubmit="submitJoinLeague(event)">
         <label class="league-field">
           <span class="league-field-label">Senha da liga</span>
-          <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha compartilhada pelo admin" autocomplete="off" autocapitalize="off" spellcheck="false" disabled required>
+          <input id="league-join-password" class="text-input" type="text" minlength="4" placeholder="Senha que o admin compartilhou" autocomplete="off" autocapitalize="off" spellcheck="false" disabled required>
         </label>
         ${!canJoinMore ? `<div class="league-note">Faça upgrade para Pro ou saia de uma liga para abrir espaço.</div>` : ''}
         <div class="league-modal-actions">
@@ -894,7 +1105,20 @@ function renderLeagueModal() {
   // Modo "join": pinta os resultados com o que já temos em memória.
   // Não toca no input — a função abaixo só atualiza a área de resultados
   // e o botão de submeter, então digitar fica fluido.
-  if (leagueModalMode === 'join') renderLeagueJoinResults();
+  if (leagueModalMode === 'join') {
+    renderLeagueJoinResults();
+    // Pré-preenche a senha quando o usuário veio de um convite.
+    if (pendingInviteCode) {
+      const passwordInput = document.getElementById('league-join-password');
+      if (passwordInput) {
+        passwordInput.value = pendingInviteCode;
+        passwordInput.disabled = false;
+      }
+      const submitBtn = document.getElementById('league-join-submit');
+      if (submitBtn) submitBtn.disabled = !leagueHubState.selectedJoinLeagueId;
+      pendingInviteCode = null; // consumido — não vaza pra próximo render
+    }
+  }
 }
 
 // ── Render parcial: só mexe na área de resultados + botão de submit.
@@ -921,12 +1145,28 @@ function renderLeagueJoinResults() {
   const overflow = Math.max(0, filtered.length - visible.length);
 
   const selectedId = leagueHubState.selectedJoinLeagueId;
+  const fullIndex = leagueHubState.publicLeaguesIndex || [];
   const selectedJoin = visible.find(l => l.league_id === selectedId)
     || filtered.find(l => l.league_id === selectedId)
+    || fullIndex.find(l => l.league_id === selectedId)
     || null;
 
+  // Caso deep-link: tem ID selecionado mas não está no catálogo (ainda
+  // carregando ou filtrado). Mostra um card "convite recebido" pra
+  // confirmar a entrada sem depender da busca.
+  const isInviteOnly = selectedId && !selectedJoin;
+
   let html = '';
-  if (!indexLoaded && indexLoading) {
+  if (isInviteOnly) {
+    html = `
+      <div class="league-catalog">
+        <button type="button" class="league-catalog-card selected" disabled>
+          <span class="league-catalog-name">🔗 Liga do convite</span>
+          <span class="league-catalog-sub">Confirmando o convite${indexLoading ? '… carregando dados' : ''}</span>
+        </button>
+      </div>
+    `;
+  } else if (!indexLoaded && indexLoading) {
     html = `<div class="league-note">Carregando ligas disponíveis…</div>`;
   } else if (indexError && !indexLoaded) {
     html = `<div class="league-note league-note-error">${escapeHtml(indexError)}</div>`;
@@ -952,11 +1192,14 @@ function renderLeagueJoinResults() {
   resultsEl.innerHTML = html;
 
   // Atualiza submit + password sem re-renderizar o input de busca.
+  // Em fluxo de convite (selectedId sem catálogo) o input fica habilitado
+  // pra usuário só digitar a senha (caso o link não trouxesse).
+  const hasSelection = !!(selectedJoin || isInviteOnly);
   if (passwordInput) {
-    passwordInput.disabled = !selectedJoin;
+    passwordInput.disabled = !hasSelection;
   }
   if (submitBtn) {
-    submitBtn.disabled = !(selectedJoin && canJoinMore);
+    submitBtn.disabled = !(hasSelection && canJoinMore);
     submitBtn.textContent = (selectedJoin && selectedJoin.join_mode === 'approval')
       ? 'Entrar (solicitar)'
       : 'Entrar';
@@ -1115,6 +1358,40 @@ function toggleLeagueComposer() {
   openLeagueModal(getJoinedLeagueCount() > 0 ? 'join' : 'create');
 }
 
+// Action sheet quando o usuário tem ≥1 liga e quer entrar/criar outra.
+// Evita FAB ambíguo — escolha clara entre "entrar com convite" (mais
+// frequente) e "criar nova".
+function openLeagueAddSheet() {
+  // Reaproveita o modal-backdrop genérico.
+  let backdrop = document.getElementById('league-add-sheet');
+  if (backdrop) { backdrop.remove(); return; }
+  backdrop = document.createElement('div');
+  backdrop.id = 'league-add-sheet';
+  backdrop.className = 'modal-backdrop league-modal-backdrop';
+  backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+  backdrop.innerHTML = `
+    <div class="modal-card league-add-sheet">
+      <button class="modal-close" onclick="document.getElementById('league-add-sheet')?.remove()" aria-label="Fechar">✕</button>
+      <h2 class="modal-title">Adicionar liga</h2>
+      <button class="league-add-option" onclick="document.getElementById('league-add-sheet')?.remove(); openLeagueModal('join')">
+        <span class="league-add-icon">🔑</span>
+        <span class="league-add-text">
+          <strong>Entrar com convite</strong>
+          <small>Cole um link ou peça a senha pro admin</small>
+        </span>
+      </button>
+      <button class="league-add-option" onclick="document.getElementById('league-add-sheet')?.remove(); openLeagueModal('create')">
+        <span class="league-add-icon">＋</span>
+        <span class="league-add-text">
+          <strong>Criar nova liga</strong>
+          <small>Você vira o admin e compartilha o convite</small>
+        </span>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+}
+
 function leagueSkeletonHtml() {
   return `
     <div class="league-skeleton">
@@ -1212,47 +1489,43 @@ function paintLeague(pane) {
   const canJoinMore = player.isPro || joinedCount < limit;
   const memberships = state.memberships || [];
 
-  const limitLabel = player.isPro
-    ? 'Pro · ligas ilimitadas'
-    : `Free · ${joinedCount}/${limit} ligas`;
+  const totalPending = memberships.reduce((sum, m) => {
+    return sum + (isLeagueAdminMembership(m.league_id) ? (m.pending_members || 0) : 0);
+  }, 0);
+
+  // Hero compacto quando já tem ligas (info granular fica nos cards).
+  const heroHtml = memberships.length ? `
+    <div class="league-hero league-hero-compact">
+      <div class="league-hero-inner">
+        <div class="league-hero-text">
+          <div class="league-name">Suas ligas</div>
+          <div class="league-sub">${player.leagueXpWeek} XP esta semana${player.isPro ? ' · Pro' : ` · ${joinedCount}/${limit}`}${totalPending ? ` · ⏳ ${totalPending} pedido${totalPending === 1 ? '' : 's'}` : ''}</div>
+        </div>
+        <button class="league-hero-add" onclick="openLeagueAddSheet()" ${canJoinMore ? '' : 'disabled'} aria-label="Entrar ou criar liga">＋</button>
+      </div>
+      ${state.refreshing ? `<div class="league-refresh-indicator" aria-hidden="true"></div>` : ''}
+    </div>
+  ` : '';
 
   pane.innerHTML = `
     <div class="league-shell-card ${state.refreshing ? 'is-refreshing' : ''}">
-      <div class="league-hero">
-        <div class="league-hero-inner">
-          <div class="league-emoji">🏟️</div>
-          <div class="league-hero-text">
-            <div class="league-name">Suas ligas</div>
-            <div class="league-sub">${escapeHtml(limitLabel)} · ${player.leagueXpWeek} XP nesta semana</div>
-          </div>
-        </div>
-        <div class="league-quick-actions">
-          <button class="league-chip league-chip-primary" onclick="openLeagueModal('create')" ${canJoinMore ? '' : 'disabled'} title="${canJoinMore ? 'Criar uma nova liga' : 'Limite de ligas atingido'}">
-            <span class="league-chip-icon">＋</span> Criar
-          </button>
-          <button class="league-chip" onclick="openLeagueModal('join')" ${canJoinMore ? '' : 'disabled'} title="${canJoinMore ? 'Buscar e entrar em uma liga' : 'Limite de ligas atingido'}">
-            <span class="league-chip-icon">🔑</span> Entrar
-          </button>
-        </div>
-        ${state.refreshing ? `<div class="league-refresh-indicator" aria-hidden="true"></div>` : ''}
-      </div>
+      ${heroHtml}
 
       ${memberships.length ? `
-        <div class="section-title section-title-row">
-          <span>MINHAS LIGAS</span>
-          <button class="league-link-btn" onclick="renderLeague(true)" title="Atualizar">${state.refreshing ? 'Atualizando…' : '↻ Atualizar'}</button>
-        </div>
         <div class="league-memberships">
           ${memberships.map(membership => renderMembershipCard(membership, state)).join('')}
         </div>
       ` : `
-        <div class="league-empty league-empty-compact">
-          <div class="league-empty-title">Você ainda não está em nenhuma liga</div>
-          <div class="league-empty-copy">Crie a sua ou peça a senha de um colega para entrar.</div>
-          <div class="league-empty-cta">
-            <button class="btn-primary" onclick="openLeagueModal('create')">Criar liga</button>
-            <button class="btn-ghost" onclick="openLeagueModal('join')">Entrar em uma liga</button>
-          </div>
+        <div class="league-empty-v2">
+          <div class="league-empty-emoji">🏟️</div>
+          <div class="league-empty-title">Compete com seus colegas</div>
+          <div class="league-empty-copy">Ranking semanal de XP entre quem joga junto. Entre com um link de convite ou crie sua própria liga.</div>
+          <button class="btn-primary league-empty-primary" onclick="openLeagueModal('join')">
+            🔑 Entrar com convite
+          </button>
+          <button class="btn-link league-empty-secondary" onclick="openLeagueModal('create')">
+            ou criar uma nova liga
+          </button>
         </div>
       `}
     </div>
@@ -1265,32 +1538,56 @@ function paintLeague(pane) {
 function renderMembershipCard(membership, state) {
   const expanded = membership.league_id === state.selectedLeagueId;
   const statusLabel = leagueStatusLabel(membership.membership_status);
-  const roleLabel = leagueRoleLabel(membership.membership_role);
   const isOwner = membership.membership_role === 'owner';
   const isAdmin = isLeagueAdminMembership(membership.league_id);
+  const isActive = membership.membership_status === 'active';
   const isPending = membership.membership_status === 'pending';
   const requests = state.requests || [];
   const standings = state.standings || [];
-  const pendingCount = isAdmin ? (expanded ? requests.length : membership.pending_members) : 0;
+  const pendingCount = isAdmin
+    ? (expanded ? requests.length : (membership.pending_members || 0))
+    : 0;
+
+  // Posição do usuário no ranking semanal — só faz sentido pro card expandido
+  // (standings só carrega da liga selecionada). No card colapsado mostramos
+  // o XP semanal direto do player como referência rápida.
+  let myRank = null;
+  let xpToBeat = null;
+  if (expanded && isActive && currentUser && standings.length) {
+    const myIdx = standings.findIndex(m => m.user_id === currentUser.id);
+    if (myIdx >= 0) {
+      myRank = myIdx + 1;
+      const ahead = standings[myIdx - 1];
+      if (ahead) xpToBeat = Math.max(0, (ahead.weekly_xp || 0) - (standings[myIdx].weekly_xp || 0)) + 1;
+    }
+  }
+
+  // Status pill: pendente (laranja), pedidos novos (badge), ativo (oculto).
+  const statusPillHtml = isPending
+    ? `<span class="league-pill pending">${statusLabel}</span>`
+    : (pendingCount > 0
+        ? `<span class="league-pill alert">⏳ ${pendingCount} pedido${pendingCount === 1 ? '' : 's'}</span>`
+        : '');
+
+  // Subtítulo enxuto: 1 linha só com o que importa.
+  const subParts = [
+    `👥 ${membership.active_members}`,
+    isOwner ? 'admin' : (isAdmin ? 'mod' : null),
+    leagueJoinModeLabel(membership.join_mode)
+  ].filter(Boolean);
 
   return `
-    <div class="league-membership-card ${expanded ? 'expanded' : ''}">
+    <div class="league-membership-card ${expanded ? 'expanded' : ''} ${isPending ? 'is-pending' : ''}">
       <button class="league-membership-main" onclick="toggleLeagueCard('${membership.league_id}')" aria-expanded="${expanded ? 'true' : 'false'}">
         <div class="league-membership-top">
           <span class="league-membership-name">${escapeHtml(membership.league_name)}</span>
-          <span class="league-pill ${membership.membership_status}">${statusLabel}</span>
+          ${statusPillHtml}
           <span class="league-detail-caret" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
         </div>
-        <div class="league-membership-sub">
-          <span class="league-role-badge ${isAdmin ? 'is-admin' : ''}">${roleLabel}</span>
-          · ${leagueJoinModeLabel(membership.join_mode)}
-        </div>
-        <div class="league-membership-meta">
-          <span>👥 ${membership.active_members} ativos</span>
-          ${pendingCount > 0 ? `<span class="badge-warn">⏳ ${pendingCount} pendentes</span>` : ''}
-        </div>
+        <div class="league-membership-sub">${subParts.map(escapeHtml).join(' · ')}</div>
       </button>
       <div class="league-membership-actions">
+        ${isActive ? `<button class="league-icon-btn invite" onclick="event.stopPropagation(); copyLeagueInvite('${membership.league_id}')" aria-label="Compartilhar convite" title="Compartilhar convite">↗</button>` : ''}
         ${isAdmin ? `<button class="league-icon-btn" onclick="event.stopPropagation(); openLeagueModal('edit', '${membership.league_id}')" aria-label="Editar liga" title="Editar liga">✎</button>` : ''}
         ${!isOwner ? `<button class="league-icon-btn danger" onclick="event.stopPropagation(); leaveLeagueMembership('${membership.league_id}')" aria-label="Sair da liga" title="Sair da liga">↪</button>` : ''}
       </div>
@@ -1300,6 +1597,15 @@ function renderMembershipCard(membership, state) {
           ${isPending ? `
             <div class="league-empty-inline">⏳ Seu pedido está aguardando aprovação do admin.</div>
           ` : `
+            ${myRank ? `
+              <div class="league-rank-chip">
+                <span class="rank-num">#${myRank}</span>
+                <span class="rank-text">
+                  <strong>${player.leagueXpWeek} XP</strong> esta semana
+                  ${xpToBeat != null ? `· faltam <strong>${xpToBeat} XP</strong> pro ${myRank - 1}º` : '· você está na frente!'}
+                </span>
+              </div>
+            ` : ''}
             <div class="section-title section-title-inline">RANKING DA SEMANA</div>
             <div class="leaderboard">
               ${standings.length ? standings.map((member, i) => `
@@ -1313,7 +1619,7 @@ function renderMembershipCard(membership, state) {
             </div>
 
             ${isAdmin ? `
-              <button type="button" class="league-requests-toggle ${leagueRequestsOpen ? 'open' : ''}" onclick="toggleLeagueRequests(event)" aria-expanded="${leagueRequestsOpen ? 'true' : 'false'}">
+              <button type="button" class="league-requests-toggle ${leagueRequestsOpen ? 'open' : ''} ${requests.length ? 'has-pending' : ''}" onclick="toggleLeagueRequests(event)" aria-expanded="${leagueRequestsOpen ? 'true' : 'false'}">
                 <span>Solicitações${requests.length ? ` <span class="league-req-count">${requests.length}</span>` : ''}</span>
                 <span class="league-requests-caret" aria-hidden="true">${leagueRequestsOpen ? '▾' : '▸'}</span>
               </button>
@@ -1343,28 +1649,19 @@ function renderMembershipCard(membership, state) {
 // ══════════════════════════════════════════════════════════
 function renderQuests() {
   const pane = document.getElementById('tab-quests');
-  const today = todayKey();
-  const levelsToday = player.levelsCompleted.filter(c => completedOnDay(c, today)).length;
-  const perfectToday = player.levelsCompleted.filter(c => completedOnDay(c, today) && c.perfect).length;
-
-  const quests = [
-    { ic: 'target', color: 'var(--lime)',   title: 'Complete 1 nível hoje',   desc: 'Missão diária', have: Math.min(1, levelsToday), need: 1, reward: 10 },
-    { ic: 'star',   color: 'var(--yellow)', title: 'Um acerto perfeito hoje', desc: '100% de acertos em um nível', have: Math.min(1, perfectToday), need: 1, reward: 15 },
-    { ic: 'flame',  color: 'var(--orange)', title: 'Mantenha streak 7 dias',  desc: 'Missão semanal', have: Math.min(7, player.streak), need: 7, reward: 30 },
-    { ic: 'trophy', color: 'var(--lilac)',  title: 'Alcance Liga Prata',      desc: 'Acumule 200 XP no total', have: Math.min(200, player.totalXp), need: 200, reward: 50 }
-  ];
+  const quests = getActiveQuests();
 
   pane.innerHTML = `
     <div class="section-title" style="margin-top:0">MISSÕES ATIVAS</div>
     ${quests.map(q => `
-      <div class="quest-card">
+      <div class="quest-card ${q.complete ? 'complete' : ''} ${q.claimed ? 'claimed' : ''}">
         <div class="quest-icon" style="color:${q.color}">${icon(q.ic, 26)}</div>
         <div class="quest-body">
           <div class="quest-title">${escapeHtml(q.title)}</div>
-          <div class="quest-desc">${escapeHtml(q.desc)} · ${q.have}/${q.need}</div>
+          <div class="quest-desc">${escapeHtml(q.desc)} · ${q.have}/${q.need}${q.claimed ? ' · recebido' : ''}</div>
           <div class="quest-prog"><div class="quest-prog-fill" style="width:${Math.min(100, (q.have/q.need)*100)}%"></div></div>
         </div>
-        <div class="quest-reward">${icon('gem', 14, 'icn-inline')} +${q.reward}</div>
+        <div class="quest-reward">${q.claimed ? 'OK' : `${icon('bolt', 14, 'icn-inline')} +${q.xp}`}</div>
       </div>
     `).join('')}
   `;
@@ -1373,11 +1670,16 @@ function renderQuests() {
 // ══════════════════════════════════════════════════════════
 // LEVEL COMPLETE
 // ══════════════════════════════════════════════════════════
-function renderComplete({ level, correctCount, totalCount, perfect, xpGained, gemsGained, streakInfo, heartsUsed, elapsedSec }) {
+function renderComplete({ level, correctCount, totalCount, perfect, xpGained, questReward, gemsGained, streakInfo, heartsUsed, elapsedSec }) {
   const view = document.getElementById('view-complete');
-  const shareText = shareResult(level, correctCount, totalCount, xpGained);
+  const questXp = questReward?.xp || 0;
+  const totalXpGained = xpGained + questXp;
+  const shareText = shareResult(level, correctCount, totalCount, totalXpGained);
   const nextLevel = getLevelByNumber(player.currentLevel);
   const seasonDone = !nextLevel;
+  const questSummary = questReward?.quests?.length
+    ? questReward.quests.map(q => `${q.title} +${q.xp} XP`).join(' · ')
+    : '';
 
   let streakMsg = '';
   if (streakInfo.started)      streakMsg = 'Streak iniciado!';
@@ -1395,19 +1697,12 @@ function renderComplete({ level, correctCount, totalCount, perfect, xpGained, ge
         body: 'Revisite os níveis passados enquanto novos casos chegam.',
         action: `<button class="btn-ghost" onclick="goHome()">Revisar jornada</button>`
       }
-    : player.isPro
-      ? {
-          kicker: 'Próximo plantão disponível',
-          title: `Nível ${nextLevel.number} · ${escapeHtml(nextLevel.title)}`,
-          body: 'Você é Pro, então pode continuar agora mesmo.',
-          action: `<button class="btn-primary" onclick="startLevel(${nextLevel.id})">${icon('play', 16, 'icn-inline')} Continuar agora</button>`
-        }
-      : {
-          kicker: 'Próximo plantão',
-          title: `${escapeHtml(nextLevel.title)}`,
-          body: 'Seu próximo caso novo fica reservado para amanhã. Hoje você ainda pode revisar níveis anteriores.',
-          action: `<button class="btn-ghost" onclick="goHome()">Voltar ao mapa</button>`
-        };
+    : {
+        kicker: 'Próximo plantão disponível',
+        title: `Nível ${nextLevel.number} · ${escapeHtml(nextLevel.title)}`,
+        body: 'Você pode continuar agora ou voltar ao mapa para revisar.',
+        action: `<button class="btn-primary" onclick="startLevel(${nextLevel.id})">${icon('play', 16, 'icn-inline')} Continuar agora</button>`
+      };
 
   view.innerHTML = `
     <div class="complete-wrap">
@@ -1417,8 +1712,12 @@ function renderComplete({ level, correctCount, totalCount, perfect, xpGained, ge
 
       <div class="complete-stats">
         <div class="cstat">
-          <div class="cstat-val">+${xpGained}</div>
-          <div class="cstat-lbl">${icon('bolt', 12, 'icn-inline')} XP</div>
+          <div class="cstat-val">+${totalXpGained}</div>
+          <div class="cstat-lbl">${icon('bolt', 12, 'icn-inline')} XP total</div>
+        </div>
+        <div class="cstat">
+          <div class="cstat-val">+${questXp}</div>
+          <div class="cstat-lbl">${icon('flame', 12, 'icn-inline')} Missões</div>
         </div>
         <div class="cstat">
           <div class="cstat-val">+${gemsGained}</div>
@@ -1429,6 +1728,7 @@ function renderComplete({ level, correctCount, totalCount, perfect, xpGained, ge
           <div class="cstat-lbl">Acertos</div>
         </div>
       </div>
+      ${questSummary ? `<div class="complete-sub">${escapeHtml(questSummary)}</div>` : ''}
 
       <div class="next-step-card">
         <div class="takeaway-title">${escapeHtml(nextCta.kicker)}</div>
@@ -1725,6 +2025,13 @@ window.openLeagueDetails = openLeagueDetails;
 window.handleLeagueRequest = handleLeagueRequest;
 window.leaveLeagueMembership = leaveLeagueMembership;
 window.openLeagueModal = openLeagueModal;
+window.copyLeagueInvite = copyLeagueInvite;
+window.processLeagueDeepLink = processLeagueDeepLink;
+window.openLeagueAddSheet = openLeagueAddSheet;
+window.showLeagueInviteConfirm = showLeagueInviteConfirm;
+window.renderLeagueInviteConfirm = renderLeagueInviteConfirm;
+window.dismissLeagueInviteConfirm = dismissLeagueInviteConfirm;
+window.acceptLeagueInvite = acceptLeagueInvite;
 window.closeLeagueModal = closeLeagueModal;
 window.renderLeagueModal = renderLeagueModal;
 window.handleLeagueSearchInput = handleLeagueSearchInput;

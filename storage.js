@@ -45,16 +45,168 @@ function normalizePlayerProgress(key, data) {
   return normalized;
 }
 
+function stampProgressForSave(key, data) {
+  if (key !== 'conduta_player_v2' || !data) return data;
+  return Object.assign({}, data, { _savedAt: new Date().toISOString() });
+}
+
+function progressTimestamp(data, fallback) {
+  const candidates = [
+    data && data._savedAt,
+    data && data.updatedAt,
+    data && data.updated_at,
+    fallback
+  ];
+  for (let i = 0; i < candidates.length; i++) {
+    const t = candidates[i] ? new Date(candidates[i]).getTime() : NaN;
+    if (!Number.isNaN(t)) return t;
+  }
+  return 0;
+}
+
+function latestCompletionDay(data) {
+  const list = data && Array.isArray(data.levelsCompleted) ? data.levelsCompleted : [];
+  let latest = null;
+  list.forEach(c => {
+    if (!c || !c.completedAt) return;
+    const d = new Date(c.completedAt);
+    if (Number.isNaN(d.getTime())) return;
+    const day = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, '0'),
+      String(d.getDate()).padStart(2, '0')
+    ].join('-');
+    if (!latest || day > latest) latest = day;
+  });
+  return latest;
+}
+
+function completedLevelNumber(completion) {
+  if (!completion) return 0;
+  if (typeof getLevel === 'function') {
+    const lv = getLevel(completion.id);
+    if (lv && Number.isFinite(lv.number)) return lv.number;
+  }
+  return Number.isFinite(Number(completion.id)) ? Number(completion.id) : 0;
+}
+
+function mergeLevelCompletions(a, b) {
+  const byId = new Map();
+
+  function put(record) {
+    if (!record || record.id === undefined || record.id === null) return;
+    const key = String(record.id);
+    const existing = byId.get(key);
+    if (!existing) {
+      byId.set(key, Object.assign({}, record));
+      return;
+    }
+
+    existing.score = Math.max(existing.score || 0, record.score || 0);
+    existing.total = Math.max(existing.total || 0, record.total || 0);
+    existing.perfect = !!(existing.perfect || record.perfect);
+    existing.attempts = Math.max(existing.attempts || 0, record.attempts || 0);
+    existing.xp = Math.max(existing.xp || 0, record.xp || 0);
+    if (!existing.completedAt || (record.completedAt && record.completedAt < existing.completedAt)) {
+      existing.completedAt = record.completedAt;
+    }
+  }
+
+  (Array.isArray(a) ? a : []).forEach(put);
+  (Array.isArray(b) ? b : []).forEach(put);
+
+  return Array.from(byId.values()).sort((x, y) => completedLevelNumber(x) - completedLevelNumber(y));
+}
+
+function mergePlayerProgress(remoteData, localData, remoteUpdatedAt) {
+  if (!remoteData) return localData || null;
+  if (!localData) return remoteData;
+
+  const remoteTs = progressTimestamp(remoteData, remoteUpdatedAt);
+  const localTs = progressTimestamp(localData);
+  const newest = localTs > remoteTs ? localData : remoteData;
+  const oldest = newest === localData ? remoteData : localData;
+  const merged = Object.assign({}, oldest, newest);
+
+  merged.levelsCompleted = mergeLevelCompletions(remoteData.levelsCompleted, localData.levelsCompleted);
+
+  const highestCompleted = merged.levelsCompleted.reduce((max, c) => {
+    return Math.max(max, completedLevelNumber(c));
+  }, 0);
+  const derivedCurrentLevel = highestCompleted > 0 ? highestCompleted + 1 : 1;
+  merged.currentLevel = Math.max(
+    Number(remoteData.currentLevel) || 1,
+    Number(localData.currentLevel) || 1,
+    derivedCurrentLevel
+  );
+
+  merged.totalXp = Math.max(Number(remoteData.totalXp) || 0, Number(localData.totalXp) || 0);
+  merged.gems = Math.max(Number(remoteData.gems) || 0, Number(localData.gems) || 0);
+  merged.bestStreak = Math.max(Number(remoteData.bestStreak) || 0, Number(localData.bestStreak) || 0);
+  merged.streakBreaks = Math.max(Number(remoteData.streakBreaks) || 0, Number(localData.streakBreaks) || 0);
+  merged.questClaims = Object.assign({}, remoteData.questClaims || {}, localData.questClaims || {});
+
+  const remoteDay = remoteData.lastPlayedDay || latestCompletionDay(remoteData);
+  const localDay = localData.lastPlayedDay || latestCompletionDay(localData);
+  if (remoteDay && localDay) {
+    if (remoteDay === localDay) {
+      merged.lastPlayedDay = remoteDay;
+      merged.streak = Math.max(Number(remoteData.streak) || 0, Number(localData.streak) || 0);
+    } else if (localDay > remoteDay) {
+      merged.lastPlayedDay = localDay;
+      merged.streak = Number(localData.streak) || Number(merged.streak) || 0;
+    } else {
+      merged.lastPlayedDay = remoteDay;
+      merged.streak = Number(remoteData.streak) || Number(merged.streak) || 0;
+    }
+  } else {
+    merged.lastPlayedDay = remoteDay || localDay || merged.lastPlayedDay || null;
+    merged.streak = Math.max(Number(remoteData.streak) || 0, Number(localData.streak) || 0);
+  }
+
+  if (remoteData.leagueWeekStart === localData.leagueWeekStart) {
+    merged.leagueXpWeek = Math.max(Number(remoteData.leagueXpWeek) || 0, Number(localData.leagueXpWeek) || 0);
+  }
+
+  return merged;
+}
+
+function shouldHealRemotePlayer(remoteData, localData, mergedData, remoteUpdatedAt) {
+  if (!remoteData || !localData || !mergedData) return false;
+
+  const remoteTs = progressTimestamp(remoteData, remoteUpdatedAt);
+  const localTs = progressTimestamp(localData);
+  if (localTs && remoteTs && localTs > remoteTs) return true;
+
+  const remoteCompleted = Array.isArray(remoteData.levelsCompleted) ? remoteData.levelsCompleted.length : 0;
+  const mergedCompleted = Array.isArray(mergedData.levelsCompleted) ? mergedData.levelsCompleted.length : 0;
+
+  return mergedCompleted > remoteCompleted ||
+    (Number(mergedData.currentLevel) || 1) > (Number(remoteData.currentLevel) || 1) ||
+    (Number(mergedData.totalXp) || 0) > (Number(remoteData.totalXp) || 0) ||
+    (Number(mergedData.bestStreak) || 0) > (Number(remoteData.bestStreak) || 0) ||
+    (
+      mergedData.lastPlayedDay &&
+      (!remoteData.lastPlayedDay || mergedData.lastPlayedDay > remoteData.lastPlayedDay)
+    );
+}
+
+function parseLocalProgress(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
 /* ── SALVAR PROGRESSO ──────────────────────────────────────── */
 async function saveProgress(key, data) {
-  const normalized = normalizePlayerProgress(key, data);
+  const normalized = stampProgressForSave(key, normalizePlayerProgress(key, data));
 
-  // Mantém cache local separado para convidado vs usuário autenticado
-  try {
-    localStorage.setItem(currentUser ? userCacheKey(currentUser.id, key) : key, JSON.stringify(normalized));
-  } catch (e) {}
-
-  // Se logado, também persiste no Supabase
+  // Usuário logado: Supabase é a fonte da verdade por usuário.
+  // O cache local por usuário só é atualizado após sucesso remoto, ou como
+  // fallback pendente se a rede/RLS falhar.
   if (currentUser && _supabase) {
     try {
       const { error } = await _supabase
@@ -66,11 +218,28 @@ async function saveProgress(key, data) {
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id,key' });
       if (error) throw error;
+      try {
+        localStorage.setItem(userCacheKey(currentUser.id, key), JSON.stringify(normalized));
+      } catch (e) {}
+      return { ok: true, remote: true, fallback: false };
     } catch (e) {
-      // localStorage segue como fonte da verdade. Logamos pra facilitar
-      // diagnóstico de RLS/rede sem assustar o usuário.
+      // Não vira fonte da verdade, mas evita perder a jogada localmente
+      // enquanto o app tenta reconciliar no próximo carregamento.
+      try {
+        localStorage.setItem(userCacheKey(currentUser.id, key), JSON.stringify(normalized));
+      } catch (_) {}
       console.warn('[saveProgress] falha ao sincronizar com Supabase:', key, e?.message || e);
+      return { ok: false, remote: false, fallback: true };
     }
+  }
+
+  // Convidado: localStorage é o armazenamento esperado.
+  try {
+    localStorage.setItem(key, JSON.stringify(normalized));
+    return { ok: true, remote: false, fallback: false };
+  } catch (e) {
+    console.warn('[saveProgress] falha ao salvar localmente:', key, e?.message || e);
+    return { ok: false, remote: false, fallback: false };
   }
 }
 
@@ -81,13 +250,34 @@ async function loadProgress(key) {
     try {
       var res = await _supabase
         .from('user_progress')
-        .select('data')
+        .select('data,updated_at')
         .eq('user_id', currentUser.id)
         .eq('key', key)
         .single();
 
+      var cachedRaw = null;
+      var cached = null;
+      try {
+        cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
+        cached = parseLocalProgress(cachedRaw);
+      } catch (e) {}
+
       if (res.data && res.data.data) {
-        return normalizePlayerProgress(key, res.data.data);
+        const remote = normalizePlayerProgress(key, res.data.data);
+        const local = normalizePlayerProgress(key, cached);
+        const merged = key === 'conduta_player_v2'
+          ? mergePlayerProgress(remote, local, res.data.updated_at)
+          : remote;
+
+        try {
+          localStorage.setItem(userCacheKey(currentUser.id, key), JSON.stringify(merged));
+        } catch (e) {}
+
+        if (key === 'conduta_player_v2' && shouldHealRemotePlayer(remote, local, merged, res.data.updated_at)) {
+          saveProgress(key, merged);
+        }
+
+        return normalizePlayerProgress(key, merged);
       }
     } catch (e) {
       // Falha silenciosa — cai para cache local do usuário
@@ -95,7 +285,7 @@ async function loadProgress(key) {
 
     try {
       var cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
-      return normalizePlayerProgress(key, cachedRaw ? JSON.parse(cachedRaw) : null);
+      return normalizePlayerProgress(key, parseLocalProgress(cachedRaw));
     } catch (e) {
       return null;
     }
@@ -104,7 +294,7 @@ async function loadProgress(key) {
   // Fallback convidado: localStorage simples
   try {
     var raw = localStorage.getItem(key);
-    return normalizePlayerProgress(key, raw ? JSON.parse(raw) : null);
+    return normalizePlayerProgress(key, parseLocalProgress(raw));
   } catch (e) {
     return null;
   }
@@ -115,7 +305,7 @@ async function loadProgress(key) {
 function loadProgressSync(key) {
   try {
     var raw = localStorage.getItem(key);
-    return normalizePlayerProgress(key, raw ? JSON.parse(raw) : null);
+    return normalizePlayerProgress(key, parseLocalProgress(raw));
   } catch (e) {
     return null;
   }

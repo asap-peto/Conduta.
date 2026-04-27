@@ -195,13 +195,15 @@ async function migrateLocalToSupabase(user) {
 
   if (keysToMigrate.length === 0) return;
 
+  var migratedKeys = [];
+
   // Upsert cada chave no Supabase
   for (var j = 0; j < keysToMigrate.length; j++) {
     var key = keysToMigrate[j];
     try {
       var data = JSON.parse(localStorage.getItem(key));
       if (data !== null) {
-        await _supabase
+        var res = await _supabase
           .from('user_progress')
           .upsert({
             user_id:    user.id,
@@ -209,15 +211,17 @@ async function migrateLocalToSupabase(user) {
             data:       data,
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id,key' });
+        if (res && res.error) throw res.error;
+        migratedKeys.push(key);
       }
     } catch (e) {
       // Falha silenciosa — continua com o próximo
     }
   }
 
-  // Limpa localStorage (exceto conduta_visited)
-  for (var m = keysToMigrate.length - 1; m >= 0; m--) {
-    localStorage.removeItem(keysToMigrate[m]);
+  // Limpa somente o que entrou no Supabase com sucesso.
+  for (var m = migratedKeys.length - 1; m >= 0; m--) {
+    localStorage.removeItem(migratedKeys[m]);
   }
 }
 
@@ -281,6 +285,11 @@ function initAuth() {
       updateAuthUI();
       closeModal('login');
       setAuthStatus('', '');
+
+      // Se havia um convite de liga aguardando login, retoma o fluxo agora.
+      if (isNewLogin && typeof processLeagueDeepLink === 'function') {
+        setTimeout(() => { try { processLeagueDeepLink(); } catch (_) {} }, 400);
+      }
     } else {
       if (event === 'SIGNED_OUT') applyLoggedOutState();
       else {

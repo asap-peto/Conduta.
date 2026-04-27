@@ -8,7 +8,11 @@ const XP = {
   baseLevelComplete: 10,
   perfectScoreBonus: 5,
   firstOfDay: 2,
-  comboMaxBonus: 3
+  comboMaxBonus: 3,
+  dailyLevelQuest: 10,
+  dailyPerfectQuest: 15,
+  weeklyStreakQuest: 30,
+  silverLeagueQuest: 50
 };
 
 const HEARTS = {
@@ -19,7 +23,6 @@ const HEARTS = {
 const GEMS = {
   levelComplete: 5,
   perfectScore: 10,
-  dailyQuest: 25,
   streakFreezeCost: 200,
   streakRepairCost: 400,
   heartRefillCost: 350
@@ -66,6 +69,7 @@ function defaultPlayer() {
     league: 'bronze',
     leagueXpWeek: 0,
     leagueWeekStart: null,
+    questClaims: {},
 
     // Assinatura
     isPro: false,
@@ -197,10 +201,13 @@ function previewLevelXp(level, options) {
 }
 
 function addXp(amount) {
+  amount = Math.max(0, Number(amount) || 0);
+  if (amount <= 0) return 0;
   syncLeagueWeek();
   player.totalXp += amount;
   player.leagueXpWeek += amount;
   updateLeague();
+  return amount;
 }
 
 function updateLeague() {
@@ -213,6 +220,99 @@ function updateLeague() {
     }
   }
   player.league = newLeague;
+}
+
+function questClaimKey(quest) {
+  if (!quest) return '';
+  if (quest.period === 'daily') return `${quest.id}:${todayKey()}`;
+  if (quest.period === 'weekly') return `${quest.id}:${weekStart()}`;
+  return quest.id;
+}
+
+function getActiveQuests() {
+  const today = todayKey();
+  const claims = player.questClaims || {};
+  const levelsToday = player.levelsCompleted.filter(c => completedOnDay(c, today)).length;
+  const perfectToday = player.levelsCompleted.filter(c => completedOnDay(c, today) && c.perfect).length;
+
+  const quests = [
+    {
+      id: 'daily_level',
+      period: 'daily',
+      ic: 'target',
+      color: 'var(--lime)',
+      title: 'Complete 1 nível hoje',
+      desc: 'Missão diária',
+      have: Math.min(1, levelsToday),
+      need: 1,
+      xp: XP.dailyLevelQuest
+    },
+    {
+      id: 'daily_perfect',
+      period: 'daily',
+      ic: 'star',
+      color: 'var(--yellow)',
+      title: 'Um acerto perfeito hoje',
+      desc: 'Missão diária',
+      have: Math.min(1, perfectToday),
+      need: 1,
+      xp: XP.dailyPerfectQuest
+    },
+    {
+      id: 'weekly_streak_7',
+      period: 'weekly',
+      ic: 'flame',
+      color: 'var(--orange)',
+      title: 'Mantenha streak 7 dias',
+      desc: 'Missão semanal',
+      have: Math.min(7, player.streak),
+      need: 7,
+      xp: XP.weeklyStreakQuest
+    },
+    {
+      id: 'league_silver',
+      period: 'once',
+      ic: 'trophy',
+      color: 'var(--lilac)',
+      title: 'Alcance Liga Prata',
+      desc: 'Marco de progresso',
+      have: Math.min(200, player.totalXp),
+      need: 200,
+      xp: XP.silverLeagueQuest
+    }
+  ];
+
+  return quests.map(q => {
+    const key = questClaimKey(q);
+    const complete = q.have >= q.need;
+    return Object.assign({}, q, {
+      claimKey: key,
+      complete,
+      claimed: !!claims[key]
+    });
+  });
+}
+
+function awardCompletedQuestXp() {
+  player.questClaims = player.questClaims || {};
+  const awarded = [];
+  let total = 0;
+
+  // Algumas missões dependem do XP total; por isso rodamos em pequenos
+  // ciclos para que XP de missão também possa liberar um marco na hora.
+  for (let pass = 0; pass < 3; pass++) {
+    let passTotal = 0;
+    getActiveQuests().forEach(q => {
+      if (!q.complete || q.claimed || player.questClaims[q.claimKey]) return;
+      player.questClaims[q.claimKey] = new Date().toISOString();
+      passTotal += q.xp;
+      awarded.push({ id: q.id, title: q.title, xp: q.xp });
+    });
+    if (passTotal <= 0) break;
+    total += addXp(passTotal);
+  }
+
+  return { xp: total, quests: awarded };
 }
 
 function getLeagueInfo() {
@@ -329,7 +429,7 @@ function addGems(amount) {
 // Regras:
 //   1) todos os níveis ficam visíveis no mapa, mas só dá pra jogar
 //      sequencialmente — o próximo jogável é sempre player.currentLevel.
-//   2) free: 1 nível novo por dia (replays liberados).
+//   2) por enquanto, sem trava Pro de quantidade diária.
 function canPlayLevel(levelId) {
   const level = getLevel(levelId);
   if (!level) return { ok: false, reason: 'not-found' };
@@ -343,14 +443,6 @@ function canPlayLevel(levelId) {
   const nextPlayable = Math.max(1, player.currentLevel || 1);
   if (level.number > nextPlayable) {
     return { ok: false, reason: 'complete-previous', requires: nextPlayable };
-  }
-
-  // Free: 1 nível novo por dia (replays não contam).
-  if (!player.isPro) {
-    const playedToday = hasCompletionOnDay(todayKey());
-    if (playedToday) {
-      return { ok: false, reason: 'daily-limit' };
-    }
   }
 
   return { ok: true };
@@ -691,6 +783,33 @@ function invalidateLeagueHub() {
   leagueHubState.lastLoadedAt = 0;
 }
 
+// ── Invite code cache (plaintext) ─────────────────────────
+// O servidor só guarda o hash bcrypt da senha — uma vez criada, não dá
+// mais pra recuperar o código pra compartilhar. Então quando o admin
+// cria/edita a liga, guardamos o plaintext local (escopado por usuário+
+// liga) só pra ele poder copiar o convite. Outros dispositivos do mesmo
+// admin não teriam essa cache; nesse caso ele cai no fluxo legado.
+const LEAGUE_INVITE_PREFIX = 'conduta_league_invite_v1:';
+function leagueInviteKey(leagueId) {
+  if (!currentUser || !currentUser.id || !leagueId) return null;
+  return LEAGUE_INVITE_PREFIX + currentUser.id + ':' + leagueId;
+}
+function saveLeagueInviteCode(leagueId, code) {
+  const key = leagueInviteKey(leagueId);
+  if (!key || !code) return;
+  try { localStorage.setItem(key, code); } catch (_) {}
+}
+function getLeagueInviteCode(leagueId) {
+  const key = leagueInviteKey(leagueId);
+  if (!key) return '';
+  try { return localStorage.getItem(key) || ''; } catch (_) { return ''; }
+}
+function clearLeagueInviteCode(leagueId) {
+  const key = leagueInviteKey(leagueId);
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+}
+
 async function createLeagueHubLeague({ name, accessCode, joinMode }) {
   const result = await leagueRpc('create_league', {
     p_name: name,
@@ -702,6 +821,8 @@ async function createLeagueHubLeague({ name, accessCode, joinMode }) {
   if (createdLeagueId) {
     leagueHubState.selectedLeagueId = createdLeagueId;
     leagueHubState.selectedJoinLeagueId = createdLeagueId;
+    // Cacheia o code pra permitir "Copiar convite" sem novo prompt.
+    if (accessCode) saveLeagueInviteCode(createdLeagueId, accessCode);
   }
   invalidateLeagueHub();
   await loadLeagueHub({ force: true });
@@ -743,6 +864,7 @@ async function reviewLeagueHubMembership({ membershipId, action }) {
 
 async function leaveLeagueHubLeague({ leagueId }) {
   await leagueRpc('leave_league', { p_league_id: leagueId });
+  clearLeagueInviteCode(leagueId);
   leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
   if (leagueHubState.selectedLeagueId === leagueId) {
     const next = leagueHubState.memberships.find(m => m.membership_status === 'active') || leagueHubState.memberships[0] || null;
@@ -757,6 +879,7 @@ async function leaveLeagueHubLeague({ leagueId }) {
 
 async function deleteLeagueHubLeague({ leagueId }) {
   await leagueRpc('delete_league', { p_league_id: leagueId });
+  clearLeagueInviteCode(leagueId);
   leagueHubState.memberships = (leagueHubState.memberships || []).filter(m => m.league_id !== leagueId);
   leagueHubState.publicLeaguesIndex = (leagueHubState.publicLeaguesIndex || []).filter(l => l.league_id !== leagueId);
   if (leagueHubState.selectedLeagueId === leagueId) {
@@ -777,6 +900,9 @@ async function updateLeagueHubLeague({ leagueId, name, accessCode, joinMode }) {
     p_access_code: accessCode || null,
     p_join_mode: joinMode || null
   });
+  // Quando o admin troca a senha, atualiza a cache local pra continuar
+  // permitindo "Copiar convite" com o código novo.
+  if (accessCode) saveLeagueInviteCode(leagueId, accessCode);
   const membership = findLeagueMembership(leagueId);
   if (membership && name) membership.league_name = name;
   if (membership && joinMode) membership.join_mode = joinMode;
@@ -884,6 +1010,8 @@ window.setPlayer = function(p) { window.player = Object.assign(defaultPlayer(), 
 window.awardLevelXp = awardLevelXp;
 window.previewLevelXp = previewLevelXp;
 window.addXp = addXp;
+window.getActiveQuests = getActiveQuests;
+window.awardCompletedQuestXp = awardCompletedQuestXp;
 window.tickStreak = tickStreak;
 window.loseHeart = loseHeart;
 window.refreshHearts = refreshHearts;
@@ -924,3 +1052,6 @@ window.loadPublicLeaguesIndex = loadPublicLeaguesIndex;
 window.filterPublicLeagues = filterPublicLeagues;
 window.setLeagueSearchQuery = setLeagueSearchQuery;
 window.clearLeagueSearch = clearLeagueSearch;
+window.saveLeagueInviteCode = saveLeagueInviteCode;
+window.getLeagueInviteCode = getLeagueInviteCode;
+window.clearLeagueInviteCode = clearLeagueInviteCode;

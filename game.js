@@ -74,6 +74,14 @@ async function boot() {
   // Recarrega player do Supabase depois do login (async)
   maybeReloadPlayerFromStorage();
 
+  // Deep-link de convite: ?join=<id>&code=<plain> abre o modal de entrar
+  // direto. Tenta agora (caso de sessão já hidratada) e de novo após o
+  // bootstrap de auth resolver, pra cobrir cold-start com login.
+  if (typeof processLeagueDeepLink === 'function') {
+    processLeagueDeepLink();
+    setTimeout(() => { try { processLeagueDeepLink(); } catch (_) {} }, 1200);
+  }
+
   // Tick periódico para refill de corações
   setInterval(() => {
     const before = player.hearts;
@@ -101,7 +109,7 @@ async function maybeReloadPlayerFromStorage() {
 }
 
 async function savePlayer() {
-  await saveProgress(STORAGE_KEY_PLAYER, player);
+  return await saveProgress(STORAGE_KEY_PLAYER, player);
 }
 
 function renderBootMessage(message) {
@@ -225,10 +233,6 @@ function startLevel(levelId) {
   clearPlayAsyncTasks(playSession);
   const access = canPlayLevel(levelId);
   if (!access.ok) {
-    if (access.reason === 'daily-limit') {
-      openModal('pro');
-      return;
-    }
     if (access.reason === 'complete-previous') {
       toast(`Conclua o nível ${access.requires} primeiro.`);
       return;
@@ -909,7 +913,7 @@ function showFeedback(isOk, text, onContinue) {
   });
 }
 
-function finishLevel() {
+async function finishLevel() {
   if (!playSession) return;
   clearPlayAsyncTasks(playSession);
   const { level, correctCount, totalCount, comboMax, heartsUsed, startTime } = playSession;
@@ -932,13 +936,17 @@ function finishLevel() {
   if (gemsGained > 0) addGems(gemsGained);
   const streakInfo = tickStreak();
   markLevelComplete(level.id, { score: correctCount, total: totalCount, perfect, xp: xpGained });
+  const questReward = awardCompletedQuestXp();
 
   const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-  savePlayer();
+  const saveResult = await savePlayer();
 
   showView('complete');
   renderHeaderStats();
-  renderComplete({ level, correctCount, totalCount, perfect, xpGained, gemsGained, streakInfo, heartsUsed, elapsedSec });
+  renderComplete({ level, correctCount, totalCount, perfect, xpGained, questReward, gemsGained, streakInfo, heartsUsed, elapsedSec });
+  if (currentUser && saveResult && saveResult.fallback) {
+    toast('Progresso guardado neste dispositivo. Vamos tentar sincronizar sua conta novamente.');
+  }
 
   if (perfect) fireConfetti();
   playSession = null;
