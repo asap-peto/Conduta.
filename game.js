@@ -73,7 +73,9 @@ async function boot() {
 
   // Com a sessão hidratada, usuário logado carrega do Supabase; convidado
   // carrega só do localStorage.
-  const saved = currentUser ? await loadProgress(STORAGE_KEY_PLAYER) : loadProgressSync(STORAGE_KEY_PLAYER);
+  const saved = currentUser
+    ? await withBootTimeout(loadProgress(STORAGE_KEY_PLAYER), 3000)
+    : loadProgressSync(STORAGE_KEY_PLAYER);
   setPlayer(saved);
   if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
     player.onboarded = true;

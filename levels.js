@@ -44,13 +44,24 @@ var levelsReadyPromise = null;
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId = null;
+
+    function finish(fn, value) {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      fn(value);
+    }
+
     const existing = document.querySelector(`script[data-level-chunk="${src}"]`);
     if (existing) {
       if (existing.dataset.loaded === 'true') {
         resolve();
       } else {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Falha ao carregar ' + src)), { once: true });
+        timeoutId = setTimeout(() => finish(reject, new Error('Tempo esgotado ao carregar ' + src)), 8000);
+        existing.addEventListener('load', () => finish(resolve), { once: true });
+        existing.addEventListener('error', () => finish(reject, new Error('Falha ao carregar ' + src)), { once: true });
       }
       return;
     }
@@ -59,11 +70,12 @@ function loadScript(src) {
     script.src = src;
     script.async = true;
     script.dataset.levelChunk = src;
+    timeoutId = setTimeout(() => finish(reject, new Error('Tempo esgotado ao carregar ' + src)), 8000);
     script.addEventListener('load', () => {
       script.dataset.loaded = 'true';
-      resolve();
+      finish(resolve);
     }, { once: true });
-    script.addEventListener('error', () => reject(new Error('Falha ao carregar ' + src)), { once: true });
+    script.addEventListener('error', () => finish(reject, new Error('Falha ao carregar ' + src)), { once: true });
     document.head.appendChild(script);
   });
 }

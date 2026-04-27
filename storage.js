@@ -10,6 +10,31 @@ var currentUser = null;   // null = deslogado → usa localStorage
 var _supabase   = null;   // referência ao cliente Supabase (setada em auth.js)
 var CONDUTA_VISITED_KEY = 'conduta_visited';
 
+function withStorageTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('Tempo esgotado ao acessar o Supabase.'));
+    }, ms);
+
+    Promise.resolve(promise)
+      .then(value => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(err => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 function userCacheKey(userId, key) {
   if (!userId) return key;
   return `conduta_cache:${userId}:${key}`;
@@ -21,7 +46,7 @@ async function ensureCurrentUser() {
   }
 
   try {
-    const { data } = await _supabase.auth.getSession();
+    const { data } = await withStorageTimeout(_supabase.auth.getSession(), 1200);
     if (data && data.session && data.session.user) {
       currentUser = data.session.user;
     }
@@ -252,14 +277,14 @@ async function saveProgress(key, data) {
   // fallback pendente se a rede/RLS falhar.
   if (currentUser && _supabase) {
     try {
-      const { error } = await _supabase
+      const { error } = await withStorageTimeout(_supabase
         .from('user_progress')
         .upsert({
           user_id:    currentUser.id,
           key:        key,
           data:       normalized,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,key' });
+        }, { onConflict: 'user_id,key' }), 4000);
       if (error) throw error;
       try {
         localStorage.setItem(userCacheKey(currentUser.id, key), JSON.stringify(normalized));
@@ -294,12 +319,12 @@ async function loadProgress(key) {
   // Se logado, tenta ler do Supabase primeiro
   if (currentUser && _supabase) {
     try {
-      var res = await _supabase
+      var res = await withStorageTimeout(_supabase
         .from('user_progress')
         .select('data,updated_at')
         .eq('user_id', currentUser.id)
         .eq('key', key)
-        .single();
+        .single(), 2500);
 
       const local = normalizePlayerProgress(key, localProgressForSignedInUser(key));
 

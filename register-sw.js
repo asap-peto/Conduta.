@@ -1,7 +1,26 @@
 function canRegisterServiceWorker() {
   if (window.location.protocol === 'https:') return true;
+  return false;
+}
+
+function isLocalDevHost() {
   return window.location.protocol === 'http:' &&
     ['localhost', '127.0.0.1'].includes(window.location.hostname);
+}
+
+if ('serviceWorker' in navigator && isLocalDevHost()) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      regs.forEach(function(reg) { reg.unregister(); });
+    }).catch(function() {});
+
+    if (window.caches && caches.keys) {
+      caches.keys().then(function(keys) {
+        keys.filter(function(k) { return k.indexOf('conduta-') === 0; })
+          .forEach(function(k) { caches.delete(k); });
+      }).catch(function() {});
+    }
+  });
 }
 
 if ('serviceWorker' in navigator && canRegisterServiceWorker()) {
