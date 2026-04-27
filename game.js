@@ -42,12 +42,13 @@ async function boot() {
 
   if (typeof startAuthBootstrap === 'function') {
     try {
-      startAuthBootstrap();
+      await startAuthBootstrap();
     } catch (e) {}
   }
 
-  // Carrega player do storage local; a sessão remota hidrata em paralelo.
-  const saved = loadProgressSync(STORAGE_KEY_PLAYER);
+  // Com a sessão hidratada, usuário logado carrega do Supabase; convidado
+  // carrega só do localStorage.
+  const saved = currentUser ? await loadProgress(STORAGE_KEY_PLAYER) : loadProgressSync(STORAGE_KEY_PLAYER);
   setPlayer(saved);
   if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
     player.onboarded = true;
@@ -71,9 +72,6 @@ async function boot() {
     savePlayer();
   }
 
-  // Recarrega player do Supabase depois do login (async)
-  maybeReloadPlayerFromStorage();
-
   // Deep-link de convite: ?join=<id>&code=<plain> abre o modal de entrar
   // direto. Tenta agora (caso de sessão já hidratada) e de novo após o
   // bootstrap de auth resolver, pra cobrir cold-start com login.
@@ -94,7 +92,9 @@ async function boot() {
 }
 
 async function maybeReloadPlayerFromStorage() {
-  await new Promise(r => setTimeout(r, 350));
+  if (typeof startAuthBootstrap === 'function') {
+    try { await startAuthBootstrap(); } catch (e) {}
+  }
   if (!currentUser) return;
   const remote = await loadProgress(STORAGE_KEY_PLAYER);
   if (remote) {
@@ -109,6 +109,9 @@ async function maybeReloadPlayerFromStorage() {
 }
 
 async function savePlayer() {
+  if (typeof startAuthBootstrap === 'function') {
+    try { await startAuthBootstrap(); } catch (e) {}
+  }
   return await saveProgress(STORAGE_KEY_PLAYER, player);
 }
 

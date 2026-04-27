@@ -258,9 +258,6 @@ function startAuthBootstrap() {
     refreshAuthModalState();
     initAuth();
     await hydrateExistingSession();
-    if (currentUser && typeof maybeReloadPlayerFromStorage === 'function') {
-      await maybeReloadPlayerFromStorage();
-    }
   })();
   return authBootstrapPromise;
 }

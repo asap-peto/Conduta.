@@ -15,6 +15,21 @@ function userCacheKey(userId, key) {
   return `conduta_cache:${userId}:${key}`;
 }
 
+async function ensureCurrentUser() {
+  if (currentUser || !_supabase || !_supabase.auth || typeof _supabase.auth.getSession !== 'function') {
+    return currentUser;
+  }
+
+  try {
+    const { data } = await _supabase.auth.getSession();
+    if (data && data.session && data.session.user) {
+      currentUser = data.session.user;
+    }
+  } catch (e) {}
+
+  return currentUser;
+}
+
 function hasVisitedConduta() {
   try {
     return localStorage.getItem(CONDUTA_VISITED_KEY) === '1';
@@ -200,8 +215,36 @@ function parseLocalProgress(raw) {
   }
 }
 
+function loadUserCachedProgress(key) {
+  try {
+    return currentUser ? parseLocalProgress(localStorage.getItem(userCacheKey(currentUser.id, key))) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function loadGuestProgress(key) {
+  try {
+    return parseLocalProgress(localStorage.getItem(key));
+  } catch (e) {
+    return null;
+  }
+}
+
+function localProgressForSignedInUser(key) {
+  const userCached = loadUserCachedProgress(key);
+  if (key !== 'conduta_player_v2') return userCached;
+
+  // Se o usuário completou algo enquanto a sessão ainda hidratava, esse
+  // progresso pode ter caído na chave de convidado. Mesclamos uma vez e
+  // depois curamos o Supabase.
+  const guest = loadGuestProgress(key);
+  return mergePlayerProgress(userCached, guest);
+}
+
 /* ── SALVAR PROGRESSO ──────────────────────────────────────── */
 async function saveProgress(key, data) {
+  await ensureCurrentUser();
   const normalized = stampProgressForSave(key, normalizePlayerProgress(key, data));
 
   // Usuário logado: Supabase é a fonte da verdade por usuário.
@@ -220,6 +263,7 @@ async function saveProgress(key, data) {
       if (error) throw error;
       try {
         localStorage.setItem(userCacheKey(currentUser.id, key), JSON.stringify(normalized));
+        if (key === 'conduta_player_v2') localStorage.removeItem(key);
       } catch (e) {}
       return { ok: true, remote: true, fallback: false };
     } catch (e) {
@@ -245,6 +289,8 @@ async function saveProgress(key, data) {
 
 /* ── CARREGAR PROGRESSO ────────────────────────────────────── */
 async function loadProgress(key) {
+  await ensureCurrentUser();
+
   // Se logado, tenta ler do Supabase primeiro
   if (currentUser && _supabase) {
     try {
@@ -255,16 +301,10 @@ async function loadProgress(key) {
         .eq('key', key)
         .single();
 
-      var cachedRaw = null;
-      var cached = null;
-      try {
-        cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
-        cached = parseLocalProgress(cachedRaw);
-      } catch (e) {}
+      const local = normalizePlayerProgress(key, localProgressForSignedInUser(key));
 
       if (res.data && res.data.data) {
         const remote = normalizePlayerProgress(key, res.data.data);
-        const local = normalizePlayerProgress(key, cached);
         const merged = key === 'conduta_player_v2'
           ? mergePlayerProgress(remote, local, res.data.updated_at)
           : remote;
@@ -284,8 +324,9 @@ async function loadProgress(key) {
     }
 
     try {
-      var cachedRaw = localStorage.getItem(userCacheKey(currentUser.id, key));
-      return normalizePlayerProgress(key, parseLocalProgress(cachedRaw));
+      const fallback = normalizePlayerProgress(key, localProgressForSignedInUser(key));
+      if (fallback) saveProgress(key, fallback);
+      return fallback;
     } catch (e) {
       return null;
     }
@@ -293,8 +334,7 @@ async function loadProgress(key) {
 
   // Fallback convidado: localStorage simples
   try {
-    var raw = localStorage.getItem(key);
-    return normalizePlayerProgress(key, parseLocalProgress(raw));
+    return normalizePlayerProgress(key, loadGuestProgress(key));
   } catch (e) {
     return null;
   }
@@ -304,8 +344,7 @@ async function loadProgress(key) {
 // Usado internamente para leitura rápida quando não logado
 function loadProgressSync(key) {
   try {
-    var raw = localStorage.getItem(key);
-    return normalizePlayerProgress(key, parseLocalProgress(raw));
+    return normalizePlayerProgress(key, loadGuestProgress(key));
   } catch (e) {
     return null;
   }
