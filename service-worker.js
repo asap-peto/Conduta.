@@ -1,4 +1,4 @@
-var CACHE = 'conduta-v55';
+var CACHE = 'conduta-v56';
 var ASSETS = [
   './',
   './index.html',
@@ -8,8 +8,8 @@ var ASSETS = [
   './auth.js?v=17',
   './levels.js?v=12',
   './levels-data.js?v=4',
-  './gamification.js?v=20',
-  './ui.js?v=43',
+  './gamification.js?v=21',
+  './ui.js?v=44',
   './game.js?v=27',
   './register-sw.js?v=26',
   './manifest.json',

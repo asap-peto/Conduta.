@@ -526,6 +526,7 @@ function emptyLeagueHubState() {
     publicLeaguesLoading: false,
     publicLeaguesError: '',
     publicLeaguesLoadedAt: 0,
+    publicLeaguesQuery: '',
     searchQuery: '',
     loading: false,
     refreshing: false,
@@ -571,12 +572,14 @@ function setSelectedJoinLeague(leagueId) {
   syncLeagueHubWindowState();
 }
 
-const LEAGUE_RPC_TIMEOUT_MS = 20_000;
+const LEAGUE_RPC_TIMEOUT_MS = 6_000;
+const LEAGUE_RPC_TIMINGS = [];
 
 async function leagueRpc(fn, params) {
   if (!currentUser) throw new Error('Entre na sua conta para usar ligas.');
   if (!_supabase) throw new Error('Supabase indisponível. Confira a configuração antes de usar ligas.');
 
+  const startedAt = Date.now();
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(
@@ -591,10 +594,32 @@ async function leagueRpc(fn, params) {
       timeoutPromise
     ]);
     if (error) throw error;
+    logLeagueRpcTiming(fn, Date.now() - startedAt, 'ok');
     return data || [];
+  } catch (err) {
+    logLeagueRpcTiming(fn, Date.now() - startedAt, 'error', err);
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function logLeagueRpcTiming(fn, elapsedMs, status, err) {
+  const entry = {
+    fn,
+    elapsedMs,
+    status,
+    at: new Date().toISOString(),
+    message: err && err.message ? err.message : ''
+  };
+  LEAGUE_RPC_TIMINGS.push(entry);
+  if (LEAGUE_RPC_TIMINGS.length > 40) LEAGUE_RPC_TIMINGS.shift();
+  window.__condutaLeagueRpcTimings = LEAGUE_RPC_TIMINGS;
+
+  const secs = elapsedMs >= 1000 ? (elapsedMs / 1000).toFixed(1) + 's' : elapsedMs + 'ms';
+  const msg = `[leagueRpc] ${fn}: ${secs}${status === 'ok' ? '' : ' · ' + (entry.message || status)}`;
+  if (status === 'ok') console.info(msg);
+  else console.warn(msg);
 }
 
 const LEAGUE_HUB_FRESH_MS = 5 * 60_000;
@@ -920,17 +945,19 @@ async function updateLeagueHubLeague({ leagueId, name, accessCode, joinMode }) {
 // pop-up. TTL curto pra refletir ligas novas em sessões longas.
 const PUBLIC_LEAGUES_INDEX_TTL_MS = 60_000;
 let _publicLeaguesIndexInflight = null;
+let _publicLeaguesIndexInflightQuery = '';
 
 function clearLeagueSearch() {
   leagueHubState.searchQuery = '';
   syncLeagueHubWindowState();
 }
 
-function publicLeaguesIndexFresh() {
+function publicLeaguesIndexFresh(query) {
   return (
     leagueHubState.publicLeaguesIndex &&
     leagueHubState.publicLeaguesIndex.length >= 0 &&
     leagueHubState.publicLeaguesLoadedAt &&
+    leagueHubState.publicLeaguesQuery === query &&
     (Date.now() - leagueHubState.publicLeaguesLoadedAt) < PUBLIC_LEAGUES_INDEX_TTL_MS
   );
 }
@@ -938,13 +965,27 @@ function publicLeaguesIndexFresh() {
 function loadPublicLeaguesIndex(options = {}) {
   const onUpdate = typeof options.onUpdate === 'function' ? options.onUpdate : null;
   const force = !!options.force;
+  const query = typeof options.query === 'string'
+    ? options.query.trim()
+    : (leagueHubState.searchQuery || '').trim();
 
-  if (!force && publicLeaguesIndexFresh()) {
+  if (query.length < 2) {
+    leagueHubState.publicLeaguesIndex = [];
+    leagueHubState.publicLeaguesQuery = query;
+    leagueHubState.publicLeaguesLoading = false;
+    leagueHubState.publicLeaguesError = '';
+    leagueHubState.publicLeaguesLoadedAt = Date.now();
+    syncLeagueHubWindowState();
+    if (onUpdate) { try { onUpdate(leagueHubState); } catch (_) {} }
+    return Promise.resolve([]);
+  }
+
+  if (!force && publicLeaguesIndexFresh(query)) {
     if (onUpdate) { try { onUpdate(leagueHubState); } catch (_) {} }
     return Promise.resolve(leagueHubState.publicLeaguesIndex);
   }
 
-  if (_publicLeaguesIndexInflight) {
+  if (_publicLeaguesIndexInflight && _publicLeaguesIndexInflightQuery === query) {
     if (onUpdate) {
       _publicLeaguesIndexInflight.then(() => { try { onUpdate(leagueHubState); } catch (_) {} });
     }
@@ -953,20 +994,28 @@ function loadPublicLeaguesIndex(options = {}) {
 
   leagueHubState.publicLeaguesLoading = true;
   leagueHubState.publicLeaguesError = '';
+  leagueHubState.publicLeaguesQuery = query;
   syncLeagueHubWindowState();
+  _publicLeaguesIndexInflightQuery = query;
 
   _publicLeaguesIndexInflight = (async () => {
     try {
-      const data = await leagueRpc('get_public_leagues');
+      const data = await leagueRpc('search_public_leagues', { p_query: query });
+      const activeQuery = (leagueHubState.searchQuery || '').trim();
+      if (activeQuery !== query) {
+        return leagueHubState.publicLeaguesIndex;
+      }
       leagueHubState.publicLeaguesIndex = Array.isArray(data) ? data : [];
       leagueHubState.publicLeaguesError = '';
       leagueHubState.publicLeaguesLoadedAt = Date.now();
+      leagueHubState.publicLeaguesQuery = query;
     } catch (err) {
       leagueHubState.publicLeaguesError = err?.message || 'Não foi possível carregar a lista de ligas.';
       // Mantém o índice antigo se houver — UX degrada, mas não vira tela em branco.
     } finally {
       leagueHubState.publicLeaguesLoading = false;
       _publicLeaguesIndexInflight = null;
+      _publicLeaguesIndexInflightQuery = '';
       syncLeagueHubWindowState();
       if (onUpdate) { try { onUpdate(leagueHubState); } catch (_) {} }
     }

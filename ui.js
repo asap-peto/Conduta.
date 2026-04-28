@@ -45,6 +45,7 @@ let leagueEditingLeagueId = null;
 let leagueRequestsOpen = false;
 let profileSettingsOpen = false;
 let levelMapExpanded = false;
+let leagueSearchDebounce = null;
 
 function renderOnboarding() {
   const view = document.getElementById('view-onboarding');
@@ -945,8 +946,9 @@ function openLeagueModal(mode, leagueId) {
   }
   renderLeagueModal();
   if (mode === 'join' && typeof loadPublicLeaguesIndex === 'function') {
-    // Carrega o índice em background; quando volta, atualiza só os resultados.
-    loadPublicLeaguesIndex({ onUpdate: () => renderLeagueJoinResults() });
+    // Não lista todas as ligas ao abrir. A busca chama o Supabase sob demanda
+    // quando houver pelo menos 2 caracteres.
+    loadPublicLeaguesIndex({ query: leagueHubState.searchQuery || '', onUpdate: () => renderLeagueJoinResults() });
   }
 }
 
@@ -1171,10 +1173,12 @@ function renderLeagueJoinResults() {
   } else if (indexError && !indexLoaded) {
     html = `<div class="league-note league-note-error">${escapeHtml(indexError)}</div>`;
   } else if (!filtered.length) {
-    if (!query) {
-      html = `<div class="league-note">Comece a digitar pra ver as ligas que combinam com o nome.</div>`;
+    if (query.length < 2) {
+      html = `<div class="league-note">Digite pelo menos 2 letras para buscar ligas.</div>`;
+    } else if (indexLoading) {
+      html = `<div class="league-note">Buscando ligas para "${escapeHtml(query)}"...</div>`;
     } else {
-      html = `<div class="league-note">Nenhuma liga encontrada para “${escapeHtml(query)}”.</div>`;
+      html = `<div class="league-note">Nenhuma liga encontrada para "${escapeHtml(query)}".</div>`;
     }
   } else {
     html = `
@@ -1211,6 +1215,17 @@ function handleLeagueSearchInput(event) {
   if (typeof setLeagueSearchQuery === 'function') setLeagueSearchQuery(value);
   // Apenas atualiza a área de resultados — input fica intacto, sem perder foco.
   renderLeagueJoinResults();
+
+  if (leagueSearchDebounce) clearTimeout(leagueSearchDebounce);
+  leagueSearchDebounce = setTimeout(() => {
+    if (typeof loadPublicLeaguesIndex === 'function') {
+      loadPublicLeaguesIndex({
+        query: value,
+        force: true,
+        onUpdate: () => renderLeagueJoinResults()
+      });
+    }
+  }, 280);
 }
 
 async function submitCreateLeague(event) {
@@ -1452,17 +1467,17 @@ function renderLeague(forceReload = false) {
     return;
   }
 
-  // Primeira carga: skeleton + fetch.
-  pane.innerHTML = `
-    <div class="league-shell-card">
-      <div class="league-hero league-hero-skel">
-        <div class="skel-title"></div>
-        <div class="skel-sub"></div>
-      </div>
-      ${leagueSkeletonHtml()}
-    </div>
-  `;
-  loadLeagueHub({ force: forceReload }).then(() => paintLeague(pane));
+  // Primeira carga sem cache: pinta estado vazio imediatamente e revalida
+  // em background. Assim liga lenta não prende a aba inteira.
+  leagueHubState.memberships = [];
+  leagueHubState.standings = [];
+  leagueHubState.requests = [];
+  leagueHubState.error = '';
+  leagueHubState.ready = true;
+  leagueHubState.lastLoadedAt = 0;
+  leagueHubState.refreshing = true;
+  paintLeague(pane);
+  loadLeagueHub({ force: true, onRefresh: () => paintLeague(pane) });
 }
 
 function paintLeague(pane) {
