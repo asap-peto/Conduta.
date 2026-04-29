@@ -1214,6 +1214,112 @@ ul     { list-style: none; }
   100% { background-position: -100% 0; }
 }
 
+/* Skeleton inline reutilizável (linhas + círculos) usado no hub de
+   ligas. Mesmo shimmer do .skel-row pra manter coerência visual. */
+.skel-line, .skel-circle {
+  background: linear-gradient(90deg, var(--bg2) 0%, var(--bg3) 50%, var(--bg2) 100%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.3s ease-in-out infinite;
+  border-radius: 6px;
+  display: block;
+}
+.skel-line { height: 12px; width: 60%; margin: 6px 0; }
+.skel-line-lg { height: 18px; width: 70%; }
+.skel-line-md { height: 14px; width: 50%; }
+.skel-line-sm { height: 10px; width: 40%; }
+.skel-circle {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Hero em estado de skeleton — mesma altura/forma do hero real, sem
+   conteúdo, pra evitar layout shift quando a carga termina. */
+.league-hero-skeleton .league-hero-inner { align-items: center; }
+
+/* Membership card em modo skeleton — placeholder com altura consistente
+   pra que o card real "encaixe" no mesmo espaço sem pulo visual. */
+.league-membership-card.skeleton {
+  padding: 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 64px;
+  pointer-events: none;
+}
+.league-membership-card.skeleton .skel-line {
+  margin: 0;
+}
+
+/* Estado de erro inicial (sem dados em cache). Tom mais sóbrio que o
+   empty state — sinaliza falha sem dramatizar. */
+.league-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 28px 18px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.league-error-state .league-error-icon {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+.league-error-state .league-empty-title { font-size: 16px; font-weight: 700; }
+.league-error-state .league-empty-copy { font-size: 13px; color: var(--muted); max-width: 320px; }
+.league-error-state .btn-primary { margin-top: 8px; }
+
+/* Aviso discreto no topo da lista quando a revalidação falha mas
+   ainda temos dados em cache. Não bloqueia a interface. */
+.league-soft-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 184, 0, 0.08);
+  border: 1px solid rgba(255, 184, 0, 0.25);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.league-soft-error-text {
+  flex: 1;
+  line-height: 1.35;
+}
+.league-soft-error-btn {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border-hi);
+  background: var(--bg3);
+  color: var(--white);
+  font-size: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s ease, transform .15s ease;
+}
+.league-soft-error-btn:hover {
+  background: rgba(255,255,255,0.06);
+  transform: rotate(45deg);
+}
+
+/* Suaviza o fade-in dos cards reais quando o skeleton sai. */
+.league-shell-card:not(.is-loading) .league-memberships > .league-membership-card {
+  animation: league-card-fade-in 220ms ease-out both;
+}
+@keyframes league-card-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Modal de liga */
 .league-modal-card {
   max-width: 460px;
@@ -2513,7 +2619,92 @@ ul     { list-style: none; }
   margin-bottom: 12px;
 }
 .profile-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.profile-username {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: linear-gradient(180deg, rgba(206,252,138,0.18), rgba(206,252,138,0.04));
+  border: 1px solid rgba(206,252,138,0.30);
+  color: var(--lime);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  display: inline-block;
+}
 .profile-sub  { font-size: 13px; color: var(--muted); }
+
+/* Username input: prefixo @ embutido + estados de feedback. O input
+   real fica sem padding-left default e a gente compõe com o prefixo. */
+.username-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--border-hi);
+  border-radius: 12px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+  overflow: hidden;
+}
+.username-input-wrap:focus-within {
+  border-color: rgba(206,252,138,0.55);
+  box-shadow: 0 0 0 3px rgba(206,252,138,0.10);
+}
+.username-prefix {
+  padding: 0 4px 0 14px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  user-select: none;
+  pointer-events: none;
+}
+.username-input.text-input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 12px 14px 12px 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--white);
+  border-radius: 0;
+}
+.username-input.text-input:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+/* Helper text — muda de cor conforme o estado. Reserva altura fixa
+   pra evitar layout shift quando muda de mensagem. */
+.username-helper {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 17px;
+  color: var(--muted);
+  transition: color .15s ease;
+}
+.username-helper.is-checking {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.username-helper.is-checking::before {
+  content: '';
+  display: inline-block;
+  width: 10px; height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  border-top-color: var(--white);
+  vertical-align: -1px;
+  animation: username-spin 0.7s linear infinite;
+}
+@keyframes username-spin { to { transform: rotate(360deg); } }
+.username-helper.is-ok {
+  color: var(--lime);
+}
+.username-helper.is-error {
+  color: var(--error, #ff6b8a);
+}
 
 .profile-grid {
   display: grid;

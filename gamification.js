@@ -77,6 +77,10 @@ function defaultPlayer() {
     // Onboarding
     onboarded: false,
     displayName: null,
+    // username é o identificador único globalmente (a tabela `usernames`
+    // no Supabase é a fonte da verdade). Mantemos espelho local pra
+    // exibição offline e pra evitar round-trip por leaderboard.
+    username: null,
     avatar: '🩺',
 
     // Badges (migrado do badges.js antigo)
@@ -572,8 +576,21 @@ function setSelectedJoinLeague(leagueId) {
   syncLeagueHubWindowState();
 }
 
-const LEAGUE_RPC_TIMEOUT_MS = 6_000;
+const LEAGUE_RPC_TIMEOUT_MS = 8_000;
 const LEAGUE_RPC_TIMINGS = [];
+
+// Mensagens de erro que indicam "função/RPC não existe no Supabase" — usado
+// pra cair no fluxo legado quando o RPC novo (get_league_hub_data) ainda
+// não foi deployado. Postgrest devolve 404 + PGRST202 nesse caso; supabase-js
+// joga erro com `code` ou `message` falando sobre função não encontrada.
+function isMissingRpcError(err) {
+  if (!err) return false;
+  const code = (err.code || err.hint || '').toString().toLowerCase();
+  const msg = (err.message || '').toString().toLowerCase();
+  return code === 'pgrst202'
+    || msg.includes('could not find the function')
+    || msg.includes('function') && msg.includes('does not exist');
+}
 
 async function leagueRpc(fn, params) {
   if (!currentUser) throw new Error('Entre na sua conta para usar ligas.');
@@ -595,7 +612,7 @@ async function leagueRpc(fn, params) {
     ]);
     if (error) throw error;
     logLeagueRpcTiming(fn, Date.now() - startedAt, 'ok');
-    return data || [];
+    return data;
   } catch (err) {
     logLeagueRpcTiming(fn, Date.now() - startedAt, 'error', err);
     throw err;
@@ -625,6 +642,10 @@ function logLeagueRpcTiming(fn, elapsedMs, status, err) {
 const LEAGUE_HUB_FRESH_MS = 5 * 60_000;
 const LEAGUE_HUB_STORAGE_PREFIX = 'conduta_league_hub_v1:';
 let _leagueHubInflight = null;
+// Quando o RPC combinado retorna 404 uma vez nesta sessão, marcamos como
+// indisponível e nem tentamos de novo — evita pagar 1 round-trip inútil
+// por carga até o admin rodar o SQL novo no Supabase.
+let _leagueHubCombinedAvailable = true;
 
 function leagueHubStorageKey() {
   if (!currentUser || !currentUser.id) return null;
@@ -668,6 +689,115 @@ function hydrateLeagueHubFromStorage() {
   }
 }
 
+// Aplica o resultado de uma carga bem-sucedida ao estado, escolhendo a
+// liga ativa preservando a seleção do usuário quando possível.
+function applyLeagueHubResult({ memberships, standings, requests, selectedLeagueId }) {
+  const list = Array.isArray(memberships) ? memberships : [];
+  leagueHubState.memberships = list;
+
+  // Prioridade da seleção: 1) o que o usuário tem em mente agora,
+  // 2) o que o servidor sugeriu, 3) primeira ativa, 4) primeira qualquer.
+  const previouslySelected = list.find(m => m.league_id === leagueHubState.selectedLeagueId);
+  const serverSelected = list.find(m => m.league_id === selectedLeagueId);
+  const firstActive = list.find(m => m.membership_status === 'active');
+  const fallback = previouslySelected || serverSelected || firstActive || list[0] || null;
+
+  leagueHubState.selectedLeagueId = fallback ? fallback.league_id : null;
+
+  const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
+  const sameAsServer = selectedMembership && selectedMembership.league_id === selectedLeagueId;
+
+  if (selectedMembership && selectedMembership.membership_status === 'active') {
+    if (sameAsServer) {
+      leagueHubState.standings = Array.isArray(standings) ? standings : [];
+      leagueHubState.requests = Array.isArray(requests) ? requests : [];
+    } else {
+      // Usuário trocou de liga selecionada enquanto a carga rodava — os
+      // standings/requests vieram pra liga errada. Mantém o que já tinha
+      // em memória (stale-while-revalidate); um openLeagueDetails posterior
+      // refaz pra liga certa via refreshLeagueStandings.
+    }
+  } else {
+    leagueHubState.standings = [];
+    leagueHubState.requests = [];
+  }
+
+  leagueHubState.ready = true;
+  leagueHubState.lastLoadedAt = Date.now();
+  leagueHubState.error = '';
+  persistLeagueHubState();
+}
+
+// Caminho rápido: 1 RPC retorna tudo (memberships + standings + requests).
+async function loadLeagueHubCombined() {
+  const preferred = leagueHubState.selectedLeagueId || null;
+  const data = await leagueRpc('get_league_hub_data', { p_preferred_league_id: preferred });
+  // Postgres SECURITY DEFINER + RETURNS jsonb chega como objeto puro via supabase-js.
+  if (!data || typeof data !== 'object') {
+    throw new Error('Resposta inesperada do servidor.');
+  }
+  return {
+    memberships: data.memberships || [],
+    standings: data.standings || [],
+    requests: data.requests || [],
+    selectedLeagueId: data.selected_league_id || null
+  };
+}
+
+// Caminho legado: enquanto o RPC combinado não estiver deployado, monta o
+// hub com 2 saltos sequenciais. Mantém o app funcional sem mexer em SQL.
+async function loadLeagueHubLegacy() {
+  const speculativeLeagueId = leagueHubState.selectedLeagueId;
+  const speculativeIsAdmin = speculativeLeagueId && isLeagueAdminMembership(speculativeLeagueId);
+
+  const standingsPromise = speculativeLeagueId
+    ? leagueRpc('get_league_standings', { p_league_id: speculativeLeagueId }).catch(() => null)
+    : Promise.resolve(null);
+  const requestsPromise = speculativeIsAdmin
+    ? leagueRpc('get_league_pending_requests', { p_league_id: speculativeLeagueId }).catch(() => null)
+    : Promise.resolve(null);
+
+  const [memberships, speculativeStandings, speculativeRequests] = await Promise.all([
+    leagueRpc('get_my_leagues'),
+    standingsPromise,
+    requestsPromise
+  ]);
+
+  const list = Array.isArray(memberships) ? memberships : [];
+  const selectable =
+    list.find(m => m.league_id === leagueHubState.selectedLeagueId) ||
+    list.find(m => m.membership_status === 'active') ||
+    list[0] ||
+    null;
+
+  let standings = [];
+  let requests = [];
+  if (selectable && selectable.membership_status === 'active') {
+    const reuse = selectable.league_id === speculativeLeagueId && speculativeStandings !== null;
+    if (reuse) {
+      standings = speculativeStandings;
+      requests = speculativeRequests || [];
+    } else {
+      const isAdmin = ['owner', 'admin'].includes(selectable.membership_role);
+      const [s, r] = await Promise.all([
+        leagueRpc('get_league_standings', { p_league_id: selectable.league_id }).catch(() => []),
+        isAdmin
+          ? leagueRpc('get_league_pending_requests', { p_league_id: selectable.league_id }).catch(() => [])
+          : Promise.resolve([])
+      ]);
+      standings = s || [];
+      requests = r || [];
+    }
+  }
+
+  return {
+    memberships: list,
+    standings,
+    requests,
+    selectedLeagueId: selectable ? selectable.league_id : null
+  };
+}
+
 async function loadLeagueHub(options = {}) {
   const force = !!options.force;
   const onRefresh = typeof options.onRefresh === 'function' ? options.onRefresh : null;
@@ -683,6 +813,7 @@ async function loadLeagueHub(options = {}) {
 
   const fresh = leagueHubState.ready && (Date.now() - leagueHubState.lastLoadedAt) < LEAGUE_HUB_FRESH_MS;
   if (fresh && !force) {
+    if (onRefresh) { try { onRefresh(leagueHubState); } catch (_) {} }
     return leagueHubState;
   }
 
@@ -690,78 +821,55 @@ async function loadLeagueHub(options = {}) {
     if (force) {
       try { await _leagueHubInflight; } catch (_) {}
     } else {
+      if (onRefresh) {
+        _leagueHubInflight.then(() => { try { onRefresh(leagueHubState); } catch (_) {} });
+      }
       return leagueHubState.ready ? leagueHubState : _leagueHubInflight;
     }
   }
 
-  const hadData = leagueHubState.ready;
+  // Resiliência: NUNCA zeramos memberships antes da carga. Stale-while-
+  // revalidate é a regra — em caso de falha, o usuário continua vendo as
+  // ligas que já tinha em memória, com um indicador de erro.
+  const hadData = leagueHubState.lastLoadedAt > 0;
   if (hadData) {
     leagueHubState.refreshing = true;
   } else {
     leagueHubState.loading = true;
   }
+  // Limpa erro anterior — começa otimista.
   leagueHubState.error = '';
+  syncLeagueHubWindowState();
 
   const run = (async () => {
     try {
-      // Otimização: dispara as RPCs em paralelo, especulando que a liga
-      // selecionada continua sendo a mesma da última carga (caso comum).
-      // Se mudar, fazemos um segundo round-trip — mas no caminho feliz
-      // (1ª carga ou liga inalterada) economizamos metade do tempo.
-      // (catalog/get_public_leagues foi removido — agora a busca é via search_public_leagues sob demanda.)
-      const speculativeLeagueId = leagueHubState.selectedLeagueId;
-      const standingsPromise = speculativeLeagueId
-        ? leagueRpc('get_league_standings', { p_league_id: speculativeLeagueId }).catch(() => null)
-        : Promise.resolve(null);
-      const requestsPromise = speculativeLeagueId
-        ? leagueRpc('get_league_pending_requests', { p_league_id: speculativeLeagueId }).catch(() => null)
-        : Promise.resolve(null);
-
-      const [memberships, speculativeStandings, speculativeRequests] = await Promise.all([
-        leagueRpc('get_my_leagues'),
-        standingsPromise,
-        requestsPromise
-      ]);
-
-      leagueHubState.memberships = memberships;
-
-      const selectableMembership =
-        findLeagueMembership(leagueHubState.selectedLeagueId) ||
-        memberships.find(m => m.membership_status === 'active') ||
-        memberships[0] ||
-        null;
-
-      leagueHubState.selectedLeagueId = selectableMembership ? selectableMembership.league_id : null;
-
-      const selectedMembership = findLeagueMembership(leagueHubState.selectedLeagueId);
-      if (selectedMembership && selectedMembership.membership_status === 'active') {
-        const canReuseSpeculative =
-          selectedMembership.league_id === speculativeLeagueId &&
-          speculativeStandings !== null;
-
-        if (canReuseSpeculative) {
-          leagueHubState.standings = speculativeStandings;
-          leagueHubState.requests = speculativeRequests || [];
-        } else {
-          const [standings, requests] = await Promise.all([
-            leagueRpc('get_league_standings', { p_league_id: selectedMembership.league_id }),
-            isLeagueAdminMembership(selectedMembership.league_id)
-              ? leagueRpc('get_league_pending_requests', { p_league_id: selectedMembership.league_id })
-              : Promise.resolve([])
-          ]);
-          leagueHubState.standings = standings;
-          leagueHubState.requests = requests;
+      let result;
+      if (_leagueHubCombinedAvailable) {
+        try {
+          result = await loadLeagueHubCombined();
+        } catch (err) {
+          if (isMissingRpcError(err)) {
+            // Schema novo ainda não rodou no Supabase — desativa pra próximas
+            // chamadas e cai pro caminho antigo agora mesmo.
+            _leagueHubCombinedAvailable = false;
+            console.info('[loadLeagueHub] get_league_hub_data ausente — usando RPCs legados.');
+            result = await loadLeagueHubLegacy();
+          } else {
+            throw err;
+          }
         }
       } else {
-        leagueHubState.standings = [];
-        leagueHubState.requests = [];
+        result = await loadLeagueHubLegacy();
       }
 
-      leagueHubState.ready = true;
-      leagueHubState.lastLoadedAt = Date.now();
-      persistLeagueHubState();
+      applyLeagueHubResult(result);
     } catch (err) {
+      // Preserva os dados que já estavam em memória — só registra o erro.
+      // O usuário não "perde" as ligas só porque a rede caiu.
       leagueHubState.error = err?.message || 'Não foi possível carregar as ligas.';
+      // Marca como ready se já tínhamos dados — paintLeague decide a partir
+      // de lastLoadedAt + error qual estado mostrar.
+      if (hadData) leagueHubState.ready = true;
     } finally {
       leagueHubState.loading = false;
       leagueHubState.refreshing = false;
@@ -776,6 +884,10 @@ async function loadLeagueHub(options = {}) {
   if (hadData && onRefresh) {
     run.then(() => { try { onRefresh(leagueHubState); } catch (_) {} });
     return leagueHubState;
+  }
+
+  if (onRefresh) {
+    run.then(() => { try { onRefresh(leagueHubState); } catch (_) {} });
   }
 
   return run;
@@ -796,8 +908,8 @@ async function refreshLeagueStandings() {
         ? leagueRpc('get_league_pending_requests', { p_league_id: membership.league_id })
         : Promise.resolve([])
     ]);
-    leagueHubState.standings = standings;
-    leagueHubState.requests = requests;
+    leagueHubState.standings = Array.isArray(standings) ? standings : [];
+    leagueHubState.requests = Array.isArray(requests) ? requests : [];
   } catch (err) {
     leagueHubState.error = err?.message || 'Não foi possível atualizar a liga.';
   }
@@ -1048,6 +1160,95 @@ function filterPublicLeagues(query) {
     });
 }
 
+// ══════════════════════════════════════════════════════════
+// USERNAME (identidade única globalmente)
+// ══════════════════════════════════════════════════════════
+// O username é o nome editável do perfil — agora linkado a uma tabela
+// `usernames` no Supabase com unique constraint. Validação client-side
+// é só pra UX (feedback rápido sem round-trip); o servidor reaplica
+// tudo via validate_username() pra impedir que cliente malicioso burle.
+
+const USERNAME_REGEX = /^[A-Za-z0-9_]{3,20}$/;
+const USERNAME_RESERVED = new Set([
+  'admin', 'system', 'conduta', 'staff', 'moderador', 'mod',
+  'support', 'suporte', 'null', 'undefined', 'me', 'you', 'anonymous'
+]);
+
+// Mensagens dos códigos de erro vindos do servidor (e do client). Mantemos
+// a tradução em um lugar só pra texto consistente entre toast e helper.
+const USERNAME_ERROR_COPY = {
+  auth_required: 'Entre na sua conta pra escolher um username.',
+  length:        'Use entre 3 e 20 caracteres.',
+  format:        'Use só letras, números e _.',
+  reserved:      'Esse username é reservado.',
+  taken:         'Esse username já está em uso.',
+  network:       'Não foi possível conferir agora — tente de novo.'
+};
+
+function usernameErrorMessage(code) {
+  return USERNAME_ERROR_COPY[code] || 'Username inválido.';
+}
+
+// Validação local — espelha validate_username() do servidor. Retorna o
+// código de erro ou null. NÃO chama rede.
+function validateUsernameLocal(value) {
+  if (value === null || value === undefined) return 'length';
+  const clean = String(value).trim();
+  if (clean.length < 3 || clean.length > 20) return 'length';
+  if (!USERNAME_REGEX.test(clean)) return 'format';
+  if (USERNAME_RESERVED.has(clean.toLowerCase())) return 'reserved';
+  return null;
+}
+
+// Verifica disponibilidade no servidor sem reservar. Usado pra feedback
+// inline enquanto o usuário digita. Retorna { available, error? }.
+async function checkUsernameAvailable(value) {
+  const localErr = validateUsernameLocal(value);
+  if (localErr) return { available: false, error: localErr };
+  if (!currentUser || !_supabase) {
+    return { available: false, error: 'auth_required' };
+  }
+  try {
+    const { data, error } = await _supabase.rpc('check_username_available', { p_username: String(value).trim() });
+    if (error) throw error;
+    if (data && typeof data === 'object') {
+      return {
+        available: !!data.available,
+        error: data.error || null
+      };
+    }
+    return { available: false, error: 'network' };
+  } catch (e) {
+    return { available: false, error: 'network' };
+  }
+}
+
+// Reivindica o username no servidor. Idempotente — chamar com o nome
+// que você já tem retorna ok. Em sucesso, espelha localmente em
+// player.username e player.displayName pra UI offline ficar consistente.
+async function claimUsername(value) {
+  const localErr = validateUsernameLocal(value);
+  if (localErr) return { ok: false, error: localErr };
+  if (!currentUser || !_supabase) {
+    return { ok: false, error: 'auth_required' };
+  }
+  try {
+    const { data, error } = await _supabase.rpc('set_username', { p_username: String(value).trim() });
+    if (error) throw error;
+    if (data && data.ok) {
+      const claimed = data.username || String(value).trim();
+      player.username = claimed;
+      // displayName espelha o username — mantém o resto da UI funcionando
+      // sem refactor em todo lugar que lê player.displayName.
+      player.displayName = claimed;
+      return { ok: true, username: claimed };
+    }
+    return { ok: false, error: (data && data.error) || 'network' };
+  } catch (e) {
+    return { ok: false, error: 'network' };
+  }
+}
+
 // ── EXPOSIÇÃO GLOBAL ──────────────────────────────────────
 window.XP = XP;
 window.HEARTS = HEARTS;
@@ -1104,3 +1305,7 @@ window.clearLeagueSearch = clearLeagueSearch;
 window.saveLeagueInviteCode = saveLeagueInviteCode;
 window.getLeagueInviteCode = getLeagueInviteCode;
 window.clearLeagueInviteCode = clearLeagueInviteCode;
+window.validateUsernameLocal = validateUsernameLocal;
+window.checkUsernameAvailable = checkUsernameAvailable;
+window.claimUsername = claimUsername;
+window.usernameErrorMessage = usernameErrorMessage;

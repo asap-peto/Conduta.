@@ -44,6 +44,15 @@ let leagueModalMode = null; // 'create' | 'join' | 'edit' | null
 let leagueEditingLeagueId = null;
 let leagueRequestsOpen = false;
 let profileSettingsOpen = false;
+// Estado do feedback inline do username no modal de perfil. Mantido fora
+// do DOM pra sobreviver a re-renders durante a digitação.
+let profileUsernameState = {
+  value: '',
+  status: 'idle', // idle | checking | available | invalid
+  errorCode: null,
+  lastQuery: ''
+};
+let profileUsernameDebounce = null;
 let levelMapExpanded = false;
 let leagueSearchDebounce = null;
 
@@ -1452,32 +1461,40 @@ function renderLeague(forceReload = false) {
     return;
   }
 
-  // Stale-while-revalidate: se já temos dados (memória ou localStorage), pinta imediatamente
-  // e revalida em background. A primeira pintura é instantânea entre sessões.
+  // Stale-while-revalidate: se já temos dados (memória ou localStorage),
+  // pinta imediatamente e revalida em background. A primeira pintura é
+  // instantânea entre sessões.
   if (!leagueHubState.ready && currentUser && _supabase) {
     hydrateLeagueHubFromStorage();
   }
 
-  if (leagueHubState.ready) {
-    paintLeague(pane);
-    const isStale = (Date.now() - leagueHubState.lastLoadedAt) > LEAGUE_HUB_FRESH_MS;
-    if (forceReload || isStale) {
-      loadLeagueHub({ force: forceReload, onRefresh: () => paintLeague(pane) });
-    }
-    return;
-  }
-
-  // Primeira carga sem cache: pinta estado vazio imediatamente e revalida
-  // em background. Assim liga lenta não prende a aba inteira.
-  leagueHubState.memberships = [];
-  leagueHubState.standings = [];
-  leagueHubState.requests = [];
-  leagueHubState.error = '';
-  leagueHubState.ready = true;
-  leagueHubState.lastLoadedAt = 0;
-  leagueHubState.refreshing = true;
+  // Estamos sempre prontos pra pintar — paintLeague é uma máquina de
+  // estados sobre lastLoadedAt + memberships + error + loading. Nunca
+  // mais zeramos memberships antes da carga (causa raiz do "saí da liga").
   paintLeague(pane);
-  loadLeagueHub({ force: true, onRefresh: () => paintLeague(pane) });
+
+  const hasFreshData = leagueHubState.lastLoadedAt > 0 &&
+    (Date.now() - leagueHubState.lastLoadedAt) < LEAGUE_HUB_FRESH_MS;
+
+  if (forceReload || !hasFreshData) {
+    loadLeagueHub({ force: forceReload, onRefresh: () => paintLeague(pane) });
+  }
+}
+
+// Estado renderizável do hub de ligas. Quatro casos disjuntos — nunca
+// mais misturamos "ainda não carregou" com "carregou e está vazio".
+//   skeleton  → carregando pela primeira vez, sem dados em cache
+//   error     → carga falhou e não temos nada pra mostrar
+//   empty     → carregou com sucesso e o usuário realmente não tem ligas
+//   list      → carregou com sucesso e tem ligas (pode estar revalidando)
+function leagueHubViewState(state) {
+  const memberships = state.memberships || [];
+  const hasData = state.lastLoadedAt > 0;
+
+  if (memberships.length > 0) return 'list';
+  if (state.error && !hasData) return 'error';
+  if (!hasData) return 'skeleton';
+  return 'empty';
 }
 
 function paintLeague(pane) {
@@ -1485,52 +1502,54 @@ function paintLeague(pane) {
   if (!pane) return;
 
   const state = leagueHubState;
+  const view = leagueHubViewState(state);
 
-  if (state.error && !state.ready) {
+  if (view === 'skeleton') {
+    pane.innerHTML = `
+      <div class="league-shell-card is-loading" aria-busy="true">
+        <div class="league-hero league-hero-compact league-hero-skeleton">
+          <div class="league-hero-inner">
+            <div class="league-hero-text">
+              <div class="skel-line skel-line-md"></div>
+              <div class="skel-line skel-line-sm"></div>
+            </div>
+            <div class="skel-circle"></div>
+          </div>
+        </div>
+        <div class="league-memberships">
+          <div class="league-membership-card skeleton">
+            <div class="skel-line skel-line-lg"></div>
+            <div class="skel-line skel-line-sm"></div>
+          </div>
+          <div class="league-membership-card skeleton">
+            <div class="skel-line skel-line-lg"></div>
+            <div class="skel-line skel-line-sm"></div>
+          </div>
+        </div>
+      </div>
+    `;
+    if (leagueModalMode) renderLeagueModal();
+    return;
+  }
+
+  if (view === 'error') {
     pane.innerHTML = `
       <div class="league-shell-card">
-        <div class="league-empty">
+        <div class="league-error-state">
+          <div class="league-error-icon" aria-hidden="true">📡</div>
           <div class="league-empty-title">Não foi possível carregar as ligas</div>
-          <div class="league-empty-copy">${escapeHtml(state.error)}</div>
+          <div class="league-empty-copy">${escapeHtml(state.error || 'Verifique sua conexão e tente de novo.')}</div>
           <button class="btn-primary" onclick="renderLeague(true)">Tentar novamente</button>
         </div>
       </div>
     `;
+    if (leagueModalMode) renderLeagueModal();
     return;
   }
 
-  const limit = getLeagueMembershipLimit();
-  const joinedCount = getJoinedLeagueCount();
-  const canJoinMore = player.isPro || joinedCount < limit;
-  const memberships = state.memberships || [];
-
-  const totalPending = memberships.reduce((sum, m) => {
-    return sum + (isLeagueAdminMembership(m.league_id) ? (m.pending_members || 0) : 0);
-  }, 0);
-
-  // Hero compacto quando já tem ligas (info granular fica nos cards).
-  const heroHtml = memberships.length ? `
-    <div class="league-hero league-hero-compact">
-      <div class="league-hero-inner">
-        <div class="league-hero-text">
-          <div class="league-name">Suas ligas</div>
-          <div class="league-sub">${player.leagueXpWeek} XP esta semana${player.isPro ? ' · Pro' : ` · ${joinedCount}/${limit}`}${totalPending ? ` · ⏳ ${totalPending} pedido${totalPending === 1 ? '' : 's'}` : ''}</div>
-        </div>
-        <button class="league-hero-add" onclick="openLeagueAddSheet()" ${canJoinMore ? '' : 'disabled'} aria-label="Entrar ou criar liga">＋</button>
-      </div>
-      ${state.refreshing ? `<div class="league-refresh-indicator" aria-hidden="true"></div>` : ''}
-    </div>
-  ` : '';
-
-  pane.innerHTML = `
-    <div class="league-shell-card ${state.refreshing ? 'is-refreshing' : ''}">
-      ${heroHtml}
-
-      ${memberships.length ? `
-        <div class="league-memberships">
-          ${memberships.map(membership => renderMembershipCard(membership, state)).join('')}
-        </div>
-      ` : `
+  if (view === 'empty') {
+    pane.innerHTML = `
+      <div class="league-shell-card">
         <div class="league-empty-v2">
           <div class="league-empty-emoji">🏟️</div>
           <div class="league-empty-title">Compete com seus colegas</div>
@@ -1542,7 +1561,49 @@ function paintLeague(pane) {
             ou criar uma nova liga
           </button>
         </div>
-      `}
+      </div>
+    `;
+    if (leagueModalMode) renderLeagueModal();
+    return;
+  }
+
+  // view === 'list'
+  const limit = getLeagueMembershipLimit();
+  const joinedCount = getJoinedLeagueCount();
+  const canJoinMore = player.isPro || joinedCount < limit;
+  const memberships = state.memberships || [];
+
+  const totalPending = memberships.reduce((sum, m) => {
+    return sum + (isLeagueAdminMembership(m.league_id) ? (m.pending_members || 0) : 0);
+  }, 0);
+
+  // Erro tolerável: tem dados em cache mas a última revalidação falhou.
+  // Mostra um aviso discreto sem destruir a interface.
+  const softErrorBar = state.error
+    ? `<div class="league-soft-error" role="status">
+         <span class="league-soft-error-text">Sem internet ou servidor lento — mostrando última versão salva.</span>
+         <button class="league-soft-error-btn" onclick="renderLeague(true)" aria-label="Recarregar agora">↻</button>
+       </div>`
+    : '';
+
+  pane.innerHTML = `
+    <div class="league-shell-card ${state.refreshing ? 'is-refreshing' : ''}">
+      <div class="league-hero league-hero-compact">
+        <div class="league-hero-inner">
+          <div class="league-hero-text">
+            <div class="league-name">Suas ligas</div>
+            <div class="league-sub">${player.leagueXpWeek} XP esta semana${player.isPro ? ' · Pro' : ` · ${joinedCount}/${limit}`}${totalPending ? ` · ⏳ ${totalPending} pedido${totalPending === 1 ? '' : 's'}` : ''}</div>
+          </div>
+          <button class="league-hero-add" onclick="openLeagueAddSheet()" ${canJoinMore ? '' : 'disabled'} aria-label="Entrar ou criar liga">＋</button>
+        </div>
+        ${state.refreshing ? `<div class="league-refresh-indicator" aria-hidden="true"></div>` : ''}
+      </div>
+
+      ${softErrorBar}
+
+      <div class="league-memberships">
+        ${memberships.map(membership => renderMembershipCard(membership, state)).join('')}
+      </div>
     </div>
   `;
 
@@ -1787,17 +1848,174 @@ async function saveProfileSettings(e) {
   if (e) e.preventDefault();
   const nameInput = document.getElementById('profile-display-name');
   const avatarInput = document.querySelector('input[name="profile-avatar"]:checked');
-  const cleanedName = (nameInput?.value || '').trim().replace(/\s+/g, ' ');
+  const submitBtn = document.getElementById('profile-save-btn');
+  const rawName = (nameInput?.value || '').trim();
+  const previousUsername = player.username || player.displayName || '';
 
-  player.displayName = cleanedName || 'Estudante';
+  // Username inalterado (case-sensitive) → só salva avatar e fecha.
+  if (rawName && rawName === previousUsername) {
+    player.avatar = avatarInput?.value || player.avatar || '🩺';
+    profileSettingsOpen = false;
+    renderHeaderStats();
+    if (currentView === 'profile') renderProfile();
+    if (player.onboarded && currentView === 'home') renderHome();
+    await savePlayer();
+    toast('Ajustes salvos.');
+    return;
+  }
+
+  // Sem nome — mantém o que já tinha (ou default).
+  if (!rawName) {
+    player.avatar = avatarInput?.value || player.avatar || '🩺';
+    profileSettingsOpen = false;
+    renderHeaderStats();
+    if (currentView === 'profile') renderProfile();
+    if (player.onboarded && currentView === 'home') renderHome();
+    await savePlayer();
+    toast('Ajustes salvos.');
+    return;
+  }
+
+  // Validação local antes de qualquer round-trip.
+  if (typeof validateUsernameLocal === 'function') {
+    const localErr = validateUsernameLocal(rawName);
+    if (localErr) {
+      profileUsernameState = { value: rawName, status: 'invalid', errorCode: localErr, lastQuery: rawName };
+      paintUsernameFeedback();
+      toast(usernameErrorMessage(localErr));
+      return;
+    }
+  }
+
+  if (!currentUser || !_supabase) {
+    // Convidado — só persiste localmente como antes (compat).
+    player.displayName = rawName;
+    player.username = null;
+    player.avatar = avatarInput?.value || player.avatar || '🩺';
+    profileSettingsOpen = false;
+    renderHeaderStats();
+    if (currentView === 'profile') renderProfile();
+    if (player.onboarded && currentView === 'home') renderHome();
+    await savePlayer();
+    toast('Ajustes salvos.');
+    return;
+  }
+
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Reservando username…'; }
+
+  const result = typeof claimUsername === 'function'
+    ? await claimUsername(rawName)
+    : { ok: false, error: 'network' };
+
+  if (!result.ok) {
+    profileUsernameState = { value: rawName, status: 'invalid', errorCode: result.error || 'network', lastQuery: rawName };
+    paintUsernameFeedback();
+    toast(usernameErrorMessage(result.error || 'network'));
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Salvar ajustes'; }
+    return;
+  }
+
   player.avatar = avatarInput?.value || player.avatar || '🩺';
   profileSettingsOpen = false;
+  profileUsernameState = { value: '', status: 'idle', errorCode: null, lastQuery: '' };
 
   renderHeaderStats();
   if (currentView === 'profile') renderProfile();
   if (player.onboarded && currentView === 'home') renderHome();
   await savePlayer();
-  toast('Ajustes salvos.');
+  toast('Username salvo.');
+}
+
+// Pinta só o helper inline do username (✓/✗/loading) sem re-renderizar
+// o modal inteiro — preserva foco e caret enquanto o usuário digita.
+function paintUsernameFeedback() {
+  const helper = document.getElementById('profile-username-helper');
+  const submit = document.getElementById('profile-save-btn');
+  if (!helper) return;
+
+  const s = profileUsernameState;
+  let cls = 'username-helper';
+  let text = 'Use 3–20 caracteres: letras, números ou _.';
+
+  if (s.status === 'checking') {
+    cls += ' is-checking';
+    text = 'Conferindo disponibilidade…';
+  } else if (s.status === 'available') {
+    cls += ' is-ok';
+    text = `✓ @${s.value} está disponível`;
+  } else if (s.status === 'invalid') {
+    cls += ' is-error';
+    text = '✗ ' + (typeof usernameErrorMessage === 'function'
+      ? usernameErrorMessage(s.errorCode)
+      : 'Username inválido.');
+  }
+
+  helper.className = cls;
+  helper.textContent = text;
+
+  if (submit) {
+    // Bloqueia o submit quando temos certeza de que é inválido. Estados
+    // idle/checking permitem submeter (servidor é a autoridade final).
+    const definitelyInvalid = s.status === 'invalid';
+    submit.disabled = definitelyInvalid;
+  }
+}
+
+function handleUsernameInput(event) {
+  const raw = (event && event.target ? event.target.value : '') || '';
+  const value = raw.trim();
+  profileUsernameState.value = value;
+  profileUsernameState.lastQuery = value;
+
+  // Vazio → volta pra idle (o save sem nome só salva avatar).
+  if (!value) {
+    profileUsernameState.status = 'idle';
+    profileUsernameState.errorCode = null;
+    paintUsernameFeedback();
+    if (profileUsernameDebounce) { clearTimeout(profileUsernameDebounce); profileUsernameDebounce = null; }
+    return;
+  }
+
+  // Validação local imediata — feedback instantâneo.
+  if (typeof validateUsernameLocal === 'function') {
+    const localErr = validateUsernameLocal(value);
+    if (localErr) {
+      profileUsernameState.status = 'invalid';
+      profileUsernameState.errorCode = localErr;
+      paintUsernameFeedback();
+      if (profileUsernameDebounce) { clearTimeout(profileUsernameDebounce); profileUsernameDebounce = null; }
+      return;
+    }
+  }
+
+  // É o que o usuário já tem? Sem round-trip.
+  const current = player.username || player.displayName || '';
+  if (value === current) {
+    profileUsernameState.status = 'available';
+    profileUsernameState.errorCode = null;
+    paintUsernameFeedback();
+    return;
+  }
+
+  profileUsernameState.status = 'checking';
+  profileUsernameState.errorCode = null;
+  paintUsernameFeedback();
+
+  if (profileUsernameDebounce) clearTimeout(profileUsernameDebounce);
+  profileUsernameDebounce = setTimeout(async () => {
+    if (typeof checkUsernameAvailable !== 'function') return;
+    const result = await checkUsernameAvailable(value);
+    // Race: usuário pode ter digitado outra coisa enquanto a checagem rodava.
+    if (profileUsernameState.lastQuery !== value) return;
+    if (result.available) {
+      profileUsernameState.status = 'available';
+      profileUsernameState.errorCode = null;
+    } else {
+      profileUsernameState.status = 'invalid';
+      profileUsernameState.errorCode = result.error || 'taken';
+    }
+    paintUsernameFeedback();
+  }, 350);
 }
 
 function renderProfile() {
@@ -1835,7 +2053,7 @@ function renderProfile() {
 
     <div class="profile-head">
       <div class="profile-avatar">${escapeHtml(avatar)}</div>
-      <div class="profile-name">${escapeHtml(player.displayName || 'Estudante')}</div>
+      <div class="profile-name">${player.username ? `<span class="profile-username">@${escapeHtml(player.username)}</span>` : escapeHtml(player.displayName || 'Estudante')}</div>
       <div class="profile-sub">${currentUser ? escapeHtml(currentUser.email) : 'Sem conta — <button class="btn-link" style="padding:0" onclick="openLoginModal()">entrar</button>'}</div>
     </div>
 
@@ -1888,11 +2106,28 @@ function renderProfile() {
         <div class="modal-card profile-settings-modal">
           <button class="modal-close" onclick="closeProfileSettings()" aria-label="Fechar">✕</button>
           <h2 class="modal-title">Ajustes do perfil</h2>
-          <p class="modal-desc">Atualize como você aparece no app.</p>
+          <p class="modal-desc">Seu username é único — outros jogadores te encontram por ele em rankings e convites.</p>
           <form class="settings-card settings-modal-card" onsubmit="saveProfileSettings(event)">
             <label class="settings-field">
-              <span class="settings-label">Como quer aparecer no app</span>
-              <input id="profile-display-name" class="text-input" type="text" maxlength="24" autocomplete="name" value="${escapeHtml(player.displayName || '')}" placeholder="Seu nome ou apelido">
+              <span class="settings-label">Username</span>
+              <div class="username-input-wrap">
+                <span class="username-prefix" aria-hidden="true">@</span>
+                <input
+                  id="profile-display-name"
+                  class="text-input username-input"
+                  type="text"
+                  maxlength="20"
+                  minlength="3"
+                  pattern="[A-Za-z0-9_]{3,20}"
+                  inputmode="text"
+                  autocomplete="username"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  value="${escapeHtml(player.username || player.displayName || '')}"
+                  placeholder="seu_username"
+                  oninput="handleUsernameInput(event)">
+              </div>
+              <div id="profile-username-helper" class="username-helper">Use 3–20 caracteres: letras, números ou _.</div>
             </label>
             <div class="settings-field">
               <span class="settings-label">Avatar em emoji</span>
@@ -1905,7 +2140,7 @@ function renderProfile() {
                 `).join('')}
               </div>
             </div>
-            <button class="btn-primary" type="button" onclick="saveProfileSettings(event)">Salvar ajustes</button>
+            <button id="profile-save-btn" class="btn-primary" type="button" onclick="saveProfileSettings(event)">Salvar ajustes</button>
           </form>
         </div>
       </div>
@@ -1915,11 +2150,23 @@ function renderProfile() {
 
 function openProfileSettings() {
   profileSettingsOpen = true;
+  // Inicializa o helper com base no username atual: se já tem, mostra
+  // como "disponível" (é o teu mesmo). Senão, idle com a dica de formato.
+  const current = player.username || player.displayName || '';
+  if (current && (typeof validateUsernameLocal !== 'function' || !validateUsernameLocal(current))) {
+    profileUsernameState = { value: current, status: 'available', errorCode: null, lastQuery: current };
+  } else {
+    profileUsernameState = { value: current, status: 'idle', errorCode: null, lastQuery: current };
+  }
   if (currentView === 'profile') renderProfile();
+  // Pinta o feedback após o DOM existir.
+  setTimeout(() => paintUsernameFeedback(), 0);
 }
 
 function closeProfileSettings() {
   profileSettingsOpen = false;
+  if (profileUsernameDebounce) { clearTimeout(profileUsernameDebounce); profileUsernameDebounce = null; }
+  profileUsernameState = { value: '', status: 'idle', errorCode: null, lastQuery: '' };
   if (currentView === 'profile') renderProfile();
 }
 
@@ -2056,6 +2303,8 @@ window.toggleLeagueCard = toggleLeagueCard;
 window.toggleLeagueRequests = toggleLeagueRequests;
 window.paintLeague = paintLeague;
 window.saveProfileSettings = saveProfileSettings;
+window.handleUsernameInput = handleUsernameInput;
+window.paintUsernameFeedback = paintUsernameFeedback;
 window.onbSelectDemo = onbSelectDemo;
 window.onbConfirmDemo = onbConfirmDemo;
 window.onbGoToStep = onbGoToStep;

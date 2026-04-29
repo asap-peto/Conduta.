@@ -308,6 +308,13 @@ function initAuth() {
       closeModal('login');
       setAuthStatus('', '');
 
+      // Preload do hub de ligas — fire-and-forget, em paralelo com o
+      // resto da renderização. Quando o usuário toca a aba "Liga", os
+      // dados já estão prontos (ou em vôo) em vez de só começar agora.
+      if (typeof loadLeagueHub === 'function') {
+        try { loadLeagueHub(); } catch (_) {}
+      }
+
       // Se havia um convite de liga aguardando login, retoma o fluxo agora.
       if (isNewLogin && typeof processLeagueDeepLink === 'function') {
         setTimeout(() => { try { processLeagueDeepLink(); } catch (_) {} }, 400);
