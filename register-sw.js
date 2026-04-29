@@ -33,7 +33,7 @@ if ('serviceWorker' in navigator && canRegisterServiceWorker()) {
   });
 
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./service-worker.js?v=26').then(function(reg) {
+    navigator.serviceWorker.register('./service-worker.js?v=27').then(function(reg) {
       reg.update();
     }).catch(function(err) {
       console.warn('Falha ao registrar service worker:', err);
