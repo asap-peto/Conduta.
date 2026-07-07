@@ -1,7 +1,7 @@
 {
   "name": "Conduta",
   "short_name": "Conduta",
-  "description": "Um caso clínico por dia. Quantas tentativas você precisa para chegar à conduta certa?",
+  "description": "Um caso clínico por dia. 3 decisões. Será que você saberia conduzir esse paciente?",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#260429",

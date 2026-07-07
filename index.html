@@ -3,27 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Conduta · Treine sua conduta clínica todo dia</title>
-  <meta name="description" content="Um nível clínico por dia. XP, streak e liga para manter o hábito. Como o Duolingo, mas para medicina.">
+  <title>Conduta · O caso clínico do dia</title>
+  <meta name="description" content="Um caso clínico por dia. 3 decisões de conduta. Será que você saberia conduzir esse paciente?">
 
   <!-- Open Graph -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://conduta.cc/">
-  <meta property="og:title"       content="Conduta — Treine sua conduta clínica todo dia">
-  <meta property="og:description" content="Um nível clínico por dia. Streak, XP e liga semanal.">
+  <meta property="og:title"       content="Conduta — O caso clínico do dia">
+  <meta property="og:description" content="Um caso por dia, 3 decisões. Será que você saberia conduzir esse paciente?">
   <meta property="og:image"       content="https://conduta.cc/og-image.png">
   <meta property="og:locale"      content="pt_BR">
   <meta name="twitter:card"       content="summary_large_image">
-  <meta name="twitter:title"      content="Conduta — Treine sua conduta clínica todo dia">
-  <meta name="twitter:description" content="Um nível clínico por dia. Streak, XP e liga semanal.">
+  <meta name="twitter:title"      content="Conduta — O caso clínico do dia">
+  <meta name="twitter:description" content="Um caso por dia, 3 decisões. Será que você saberia conduzir esse paciente?">
   <meta name="twitter:image"      content="https://conduta.cc/og-image.png">
   <meta name="theme-color"        content="#260429">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,800;1,9..40,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=31">
+  <link rel="stylesheet" href="styles.css?v=17">
   <link rel="icon" type="image/svg+xml" href="Conduta_mini_logo.svg">
 
   <!-- Supabase via CDN -->
@@ -35,95 +33,27 @@
 <header id="app-header">
   <div class="header-inner">
     <button class="logo-btn" onclick="goHome()">
-      <span class="logo-text">Conduta<span class="logo-dot">.</span></span>
+      Conduta<span class="logo-dot">.</span>
     </button>
-
     <div class="header-stats" id="header-stats">
       <!-- Preenchido por renderHeaderStats() -->
     </div>
   </div>
 </header>
 
-<!-- ══ MAIN CONTAINER ══════════════════════════════════════ -->
+<!-- ══ MAIN ════════════════════════════════════════════════ -->
 <main id="app-main">
-
-  <!-- ── VIEW: ONBOARDING ──────────────────────────────────── -->
-  <section class="view" id="view-onboarding" style="display:none">
-    <!-- Conteúdo preenchido por renderOnboarding() -->
-  </section>
-
-  <!-- ── VIEW: HOME / MAPA DE NÍVEIS ───────────────────────── -->
-  <section class="view" id="view-home" style="display:none">
-    <div class="home-hero">
-      <div class="home-mascot" id="home-mascot">
-        <div class="mascot-face">🦉</div>
-        <div class="mascot-bubble" id="mascot-bubble">
-          <span id="mascot-text">Bem-vindo ao plantão!</span>
-        </div>
-      </div>
-      <div class="home-streak-card">
-        <div class="streak-flame" id="streak-flame">🔥</div>
-        <div class="streak-info">
-          <div class="streak-count"><span id="home-streak-n">0</span> dias</div>
-          <div class="streak-sub" id="home-streak-sub">Comece seu streak</div>
-        </div>
-      </div>
-    </div>
-
-    <div id="tab-jogar" class="tab-pane">
-      <div class="level-map" id="level-map">
-        <!-- Preenchido por renderLevelMap() -->
-      </div>
-      <div class="today-card is-hidden" id="today-card">
-        <!-- Preenchido por renderTodayCard() — bottom sheet contextual -->
-      </div>
-    </div>
-
-    <div id="tab-liga" class="tab-pane" style="display:none">
-      <!-- Preenchido por renderLeague() -->
-    </div>
-
-    <div id="tab-quests" class="tab-pane" style="display:none">
-      <!-- Preenchido por renderQuests() -->
-    </div>
-  </section>
-
-  <!-- ── VIEW: PLAY (mode-agnostic container) ──────────────── -->
-  <section class="view" id="view-play" style="display:none">
-    <div class="play-header">
-      <button class="play-close" onclick="quitLevel()" aria-label="Sair">✕</button>
-      <div class="play-progress">
-        <div class="play-progress-bar"><div class="play-progress-fill" id="play-progress-fill"></div></div>
-      </div>
-      <div class="play-hearts" id="play-hearts">
-        <span>❤️</span><span id="play-hearts-n">5</span>
-      </div>
-    </div>
-    <div class="play-body" id="play-body">
-      <!-- Preenchido por renderPlay() conforme o modo -->
-    </div>
-    <div class="play-footer" id="play-footer">
-      <!-- Botão de confirmar / continuar -->
-    </div>
-  </section>
-
-  <!-- ── VIEW: LEVEL COMPLETE ──────────────────────────────── -->
-  <section class="view" id="view-complete" style="display:none">
-    <!-- Preenchido por renderComplete() -->
-  </section>
-
-  <!-- ── VIEW: PROFILE ─────────────────────────────────────── -->
-  <section class="view" id="view-profile" style="display:none">
-    <!-- Preenchido por renderProfile() -->
-  </section>
-
-  <!-- Bottom nav — fica fixo em home e profile. position: fixed no CSS,
-       então a posição no DOM é só por questão de organização. -->
-  <nav class="home-tabs" id="home-tabs-nav" style="display:none">
-    <!-- Preenchido por renderBottomNav() -->
-  </nav>
-
+  <section class="view" id="view-onboarding" style="display:none"></section>
+  <section class="view" id="view-home"       style="display:none"></section>
+  <section class="view" id="view-archive"    style="display:none"></section>
+  <section class="view" id="view-league"     style="display:none"></section>
+  <section class="view" id="view-profile"    style="display:none"></section>
+  <section class="view" id="view-case"       style="display:none"></section>
+  <section class="view" id="view-result"     style="display:none"></section>
 </main>
+
+<!-- ══ NAV INFERIOR ════════════════════════════════════════ -->
+<nav id="bottom-nav" style="display:none"></nav>
 
 <!-- ══ MODAIS ══════════════════════════════════════════════ -->
 
@@ -132,8 +62,7 @@
   <div class="modal-card">
     <button class="modal-close" onclick="closeModal('login')" aria-label="Fechar">✕</button>
     <h2 class="modal-title" id="login-title">Entrar</h2>
-    <p class="modal-desc">Salve seu progresso, streak e gemas em qualquer dispositivo.</p>
-    <div class="auth-status" id="auth-status" style="display:none"></div>
+    <p class="modal-desc">Salve seu streak e seu histórico em qualquer dispositivo.</p>
 
     <button class="btn-google" onclick="loginWithGoogle()">
       <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
@@ -180,59 +109,19 @@
   </div>
 </div>
 
-<!-- Modal sem corações -->
-<div class="modal-backdrop" id="modal-nohearts" style="display:none" onclick="if(event.target===this)closeModal('nohearts')">
-  <div class="modal-card">
-    <button class="modal-close" onclick="closeModal('nohearts')" aria-label="Fechar">✕</button>
-    <div class="modal-hero">💔</div>
-    <h2 class="modal-title">Sem corações</h2>
-    <p class="modal-desc">Próximo coração em <span id="next-heart-timer">—</span>.</p>
-    <button class="btn-primary" onclick="buyHeartsWithGems()">
-      Comprar 5 ❤️ por 350 💎
-    </button>
-    <button class="btn-ghost" onclick="closeModal('nohearts'); goHome()">Voltar ao mapa</button>
-  </div>
-</div>
-
-<!-- Modal Pro -->
-<div class="modal-backdrop" id="modal-pro" style="display:none" onclick="if(event.target===this)closeModal('pro')">
-  <div class="modal-card modal-pro">
-    <button class="modal-close" onclick="closeModal('pro')" aria-label="Fechar">✕</button>
-    <div class="modal-hero">👑</div>
-    <h2 class="modal-title">Conduta Pro</h2>
-    <ul class="pro-features">
-      <li>Corações ilimitados — nunca para</li>
-      <li>Revisão de erros + analytics por especialidade</li>
-      <li>Casos raros bônus desbloqueados</li>
-      <li>Sem anúncios</li>
-    </ul>
-    <button class="btn-primary" onclick="toast('Em breve! Ainda estamos na beta.')">
-      R$ 29,90/mês · assinar
-    </button>
-    <p class="modal-fine">Cancele quando quiser.</p>
-  </div>
-</div>
-
-<!-- Modal revisão de nível passado -->
-<div class="modal-backdrop" id="modal-pastlevel" style="display:none" onclick="if(event.target===this)closeModal('pastlevel')">
-  <div class="modal-card">
-    <button class="modal-close" onclick="closeModal('pastlevel')" aria-label="Fechar">✕</button>
-    <div id="modal-pastlevel-body"><!-- preenchido por openPastLevel() --></div>
-  </div>
-</div>
-
 <!-- Toast -->
 <div class="toast" id="toast" style="display:none"></div>
 
-<!-- ══ SCRIPTS ═══════════════════════════════════════════════ -->
-<script src="storage.js?v=16"></script>
-<script src="icons.js?v=10"></script>
-<script src="auth.js?v=18"></script>
-<script src="levels.js?v=12"></script>
-<script src="gamification.js?v=22"></script>
-<script src="ui.js?v=45"></script>
-<script src="game.js?v=27"></script>
-<script src="register-sw.js?v=27"></script>
+<!-- ══ SCRIPTS ═════════════════════════════════════════════ -->
+<script src="storage.js?v=8"></script>
+<script src="icons.js?v=8"></script>
+<script src="auth.js?v=8"></script>
+<script src="cases.js?v=18"></script>
+<script src="score.js?v=14"></script>
+<script src="share.js?v=8"></script>
+<script src="percentile.js?v=10"></script>
+<script src="ui.js?v=18"></script>
+<script src="game.js?v=18"></script>
 
 </body>
 </html>

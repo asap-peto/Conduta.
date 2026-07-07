@@ -1,1127 +1,404 @@
 /* ============================================================
    game.js — Conduta.
-   Controller: inicialização, roteamento de views, motor de jogo
-   por modo (clássica, imagem, triagem, rapidfire, plantão, caso raro).
+   Controller: boot, caso do dia (BRT), máquina de estados,
+   timer, streak, lock diário e ponte com auth/percentil.
    ============================================================ */
 
-// ── ESTADO ATUAL DA VIEW ──────────────────────────────────
-var currentView = 'boot';
-var playSession = null;  // estado da partida em curso
+/* ── CHAVES DE STORAGE ─────────────────────────────────────── */
+var KEY_PLAYER  = 'conduta_player_v3';
+var KEY_DAILY   = 'conduta_daily_v1';
+var KEY_SESSION = 'conduta_session_v1';
+var KEY_ONBOARD = 'conduta_onboarded_v1';
 
-const STORAGE_KEY_PLAYER = 'conduta_player_v2';
+/* ── RELÓGIO BRT (UTC-3 fixo, sem horário de verão) ────────── */
+var EPOCH_BRT = Date.UTC(2026, 6, 1); // lançamento: 1 jul 2026 = Caso #1
 
-function withBootTimeout(promise, ms) {
-  return new Promise(resolve => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      resolve(null);
-    }, ms);
-
-    Promise.resolve(promise)
-      .then(value => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch(() => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve(null);
-      });
-  });
+function brtNow() { return new Date(Date.now() - 3 * 3600 * 1000); }
+function dayKey() { return brtNow().toISOString().slice(0, 10); }
+function dayIndex() {
+  return Math.floor((Date.now() - 3 * 3600 * 1000 - EPOCH_BRT) / 86400000);
+}
+function dayNumber() { return dayIndex() + 1; }
+function msUntilMidnightBRT() {
+  var sinceEpoch = Date.now() - 3 * 3600 * 1000 - EPOCH_BRT;
+  return 86400000 - (sinceEpoch % 86400000);
+}
+function todaysCase() {
+  var q = activeQueue();
+  if (!q.length) return null;
+  var idx = ((dayIndex() % q.length) + q.length) % q.length;
+  return getCaseById(q[idx]);
 }
 
-function clearPlayAsyncTasks(session) {
-  const target = session || playSession;
-  if (!target || !target.subStates) return;
-  if (target.subStates.rfInterval) {
-    clearInterval(target.subStates.rfInterval);
-    target.subStates.rfInterval = null;
-  }
-  if (target.subStates.rfAdvanceTimeout) {
-    clearTimeout(target.subStates.rfAdvanceTimeout);
-    target.subStates.rfAdvanceTimeout = null;
-  }
+/* ── ESTADO ────────────────────────────────────────────────── */
+var player = null;   // { streak, bestStreak, lastPlayedDay, freezesUsedMonth, monthKey, xp }
+var daily = null;    // { [dayKey]: resultado }
+var session = null;  // partida em curso (ou null)
+
+function defaultPlayer() {
+  return { streak: 0, bestStreak: 0, lastPlayedDay: null, freezesUsedMonth: 0, monthKey: null, xp: 0, name: null };
 }
 
-// ── BOOT ──────────────────────────────────────────────────
-async function boot() {
-  // Espera DOM
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-    return;
-  }
-
-  renderBootMessage('Carregando casos do plantão...');
-
-  try {
-    await ensureLevelsLoaded();
-  } catch (err) {
-    renderBootError(err);
-    return;
-  }
-
-  if (typeof startAuthBootstrap === 'function') {
-    try {
-      await withBootTimeout(startAuthBootstrap(), 1500);
-    } catch (e) {}
-  }
-
-  // Com a sessão hidratada, usuário logado carrega do Supabase; convidado
-  // carrega só do localStorage.
-  const saved = currentUser
-    ? await withBootTimeout(loadProgress(STORAGE_KEY_PLAYER), 3000)
-    : loadProgressSync(STORAGE_KEY_PLAYER);
-  setPlayer(saved);
-  if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
-    player.onboarded = true;
-  }
-  const weeklyReset = syncLeagueWeek();
-  refreshHearts();
-
-  // Decide primeira tela
-  if (!player.onboarded) {
-    if (typeof rememberCondutaVisit === 'function') rememberCondutaVisit();
-    showView('onboarding');
-    renderOnboarding();
-  } else {
-    showView('home');
-    renderHome();
-  }
-
+/* nome exibido na saudação (default "Estudante"); persiste no player */
+function getPlayerName() {
+  return (player && player.name) ? player.name : 'Estudante';
+}
+function hasCustomName() { return !!(player && player.name); }
+function setPlayerName(name) {
+  name = (name || '').trim().slice(0, 24);
+  player.name = name || null;
+  saveProgress(KEY_PLAYER, player);
   renderHeaderStats();
+}
+function playedCount() { return daily ? Object.keys(daily).length : 0; }
 
-  if (weeklyReset) {
-    savePlayer();
+function loadStateSync() {
+  player = loadProgressSync(KEY_PLAYER) || defaultPlayer();
+  daily = loadProgressSync(KEY_DAILY) || {};
+  session = loadProgressSync(KEY_SESSION) || null;
+  // sessão de outro dia não vale mais
+  if (session && session.dayKey !== dayKey()) {
+    session = null;
+    saveProgress(KEY_SESSION, null);
   }
-
-  // Deep-link de convite: ?join=<id>&code=<plain> abre o modal de entrar
-  // direto. Tenta agora (caso de sessão já hidratada) e de novo após o
-  // bootstrap de auth resolver, pra cobrir cold-start com login.
-  if (typeof processLeagueDeepLink === 'function') {
-    processLeagueDeepLink();
-    setTimeout(() => { try { processLeagueDeepLink(); } catch (_) {} }, 1200);
-  }
-
-  // Tick periódico para refill de corações
-  setInterval(() => {
-    const before = player.hearts;
-    refreshHearts();
-    if (player.hearts !== before) {
-      renderHeaderStats();
-      savePlayer();
-    }
-  }, 30000);
 }
 
+/* Recarrega do Supabase após login (chamado por auth.js). */
 async function maybeReloadPlayerFromStorage() {
-  if (typeof startAuthBootstrap === 'function') {
-    try { await startAuthBootstrap(); } catch (e) {}
-  }
-  if (!currentUser) return;
-  const remote = await loadProgress(STORAGE_KEY_PLAYER);
-  if (remote) {
-    setPlayer(remote);
-    const weeklyReset = syncLeagueWeek();
-    refreshHearts();
-    renderHeaderStats();
-    if (currentView === 'home') renderHome();
-    if (currentView === 'profile') renderProfile();
-    if (weeklyReset) savePlayer();
-  }
+  player = (await loadProgress(KEY_PLAYER)) || defaultPlayer();
+  daily = (await loadProgress(KEY_DAILY)) || {};
+  session = (await loadProgress(KEY_SESSION)) || null;
+  if (session && session.dayKey !== dayKey()) session = null;
 }
 
-async function savePlayer() {
-  if (typeof startAuthBootstrap === 'function') {
-    try { await startAuthBootstrap(); } catch (e) {}
-  }
-  return await saveProgress(STORAGE_KEY_PLAYER, player);
+function playedToday() { return !!(daily && daily[dayKey()]); }
+function hasOpenSession() { return !!(session && session.dayKey === dayKey()); }
+
+/* ── ROTEAMENTO / ABAS ─────────────────────────────────────── */
+var currentTab = 'home'; // 'home' | 'arquivo' | 'liga' | 'perfil'
+
+function renderApp() {
+  renderHeaderStats();
+  if (!loadProgressSync(KEY_ONBOARD)) { renderOnboarding(); return; }
+  if (hasOpenSession()) { renderCase(); return; }
+  showTab(currentTab);
 }
 
-function renderBootMessage(message) {
-  const main = document.getElementById('app-main');
-  if (!main) return;
-  let el = document.getElementById('boot-state');
-  if (!el) {
-    el = document.createElement('section');
-    el.id = 'boot-state';
-    el.className = 'boot';
-    main.prepend(el);
-  }
-  el.innerHTML = `
-    <div class="boot-spinner"></div>
-    <div>${escapeHtml(message || 'Carregando...')}</div>
-  `;
-  el.style.display = 'flex';
-}
-
-function renderBootError(err) {
-  const main = document.getElementById('app-main');
-  const msg = err && err.message ? err.message : 'Não foi possível carregar os casos.';
-  if (main) {
-    let el = document.getElementById('boot-state');
-    if (!el) {
-      el = document.createElement('section');
-      el.id = 'boot-state';
-      el.className = 'boot';
-      main.prepend(el);
-    }
-    el.innerHTML = `
-      <div class="boot-spinner" style="border-top-color: var(--error);"></div>
-      <div style="max-width:360px;text-align:center;line-height:1.5">${escapeHtml(msg)}</div>
-      <button class="btn-primary" style="max-width:280px" onclick="boot()">Tentar novamente</button>
-    `;
-    el.style.display = 'flex';
-  }
-  toast('Falha ao carregar os níveis.');
-}
-
-// ── ROUTING ───────────────────────────────────────────────
-function showView(name) {
-  currentView = name;
-  const bootState = document.getElementById('boot-state');
-  if (bootState) bootState.style.display = 'none';
-  ['onboarding', 'home', 'play', 'complete', 'profile'].forEach(v => {
-    const el = document.getElementById('view-' + v);
-    if (el) el.style.display = (v === name) ? 'block' : 'none';
-  });
-  document.getElementById('app-header').style.display = (name === 'onboarding') ? 'none' : 'block';
-  // Bottom nav só faz sentido em home e profile.
-  const nav = document.getElementById('home-tabs-nav');
-  if (nav) nav.style.display = (name === 'home' || name === 'profile') ? 'flex' : 'none';
-  if (typeof refreshNavActive === 'function') refreshNavActive();
-  window.scrollTo(0, 0);
-}
-
-function goHome() {
-  if (!player.onboarded && typeof hasVisitedConduta === 'function' && hasVisitedConduta()) {
-    player.onboarded = true;
-  }
-  if (!player.onboarded) {
-    showView('onboarding');
-    renderOnboarding();
-    return;
-  }
-  showView('home');
+function showTab(name) {
+  stopTimerUI();
+  stopCountdown();
+  currentTab = name;
+  if (name === 'arquivo') { renderArchive(); return; }
+  if (name === 'liga') { renderLeague(); return; }
+  if (name === 'perfil') { renderProfile(); return; }
+  // 'home' — adapta ao estado (novo / em andamento / concluído)
   renderHome();
 }
 
-function goProfile() {
-  if (!player.onboarded) return;
-  // Toggle: se já está no perfil, volta pro home
-  if (currentView === 'profile') {
-    goHome();
-    return;
-  }
-  showView('profile');
-  renderProfile();
+function openArchive() { showTab('arquivo'); }
+
+function goHome() {
+  showTab('home');
 }
 
-function setTab(name) {
-  // Permite trocar de aba a partir do profile — volta pra home antes.
-  if (currentView !== 'home') {
-    showView('home');
-  }
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.tab === name);
-  });
-  ['jogar', 'liga', 'quests'].forEach(t => {
-    const el = document.getElementById('tab-' + t);
-    if (el) el.style.display = (t === name) ? 'block' : 'none';
-  });
-  if (typeof updateHomeHeroVisibility === 'function') updateHomeHeroVisibility(name);
-  if (name === 'liga')   renderLeague();
-  if (name === 'quests') renderQuests();
+function completeOnboarding() {
+  saveProgress(KEY_ONBOARD, true);
+  renderApp();
 }
 
-// Sincroniza qual botão da nav fica destacado com a view atual.
-function refreshNavActive() {
-  document.querySelectorAll('.tab-btn[data-tab]').forEach(b => {
-    let active = false;
-    if (currentView === 'profile') {
-      active = b.dataset.tab === 'profile';
-    } else if (currentView === 'home') {
-      const visible = ['jogar', 'liga', 'quests'].find(t => {
-        const el = document.getElementById('tab-' + t);
-        return el && el.style.display !== 'none';
-      });
-      active = b.dataset.tab === (visible || 'jogar');
-    }
-    b.classList.toggle('active', active);
-  });
+/* ── PARTIDA ───────────────────────────────────────────────── */
+function shuffled(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
 }
-window.refreshNavActive = refreshNavActive;
 
-// ══════════════════════════════════════════════════════════
-// PLAY: iniciar nível
-// ══════════════════════════════════════════════════════════
-function startLevel(levelId) {
-  clearPlayAsyncTasks(playSession);
-  const access = canPlayLevel(levelId);
-  if (!access.ok) {
-    if (access.reason === 'complete-previous') {
-      toast(`Conclua o nível ${access.requires} primeiro.`);
-      return;
-    }
-    if (access.reason === 'locked') {
-      toast('Esse nível ainda está bloqueado.');
-      return;
-    }
-    toast('Nível não disponível.');
-    return;
-  }
-
-  refreshHearts();
-  if (player.hearts <= 0 && !player.isPro) {
-    openModal('nohearts');
-    updateHeartTimer();
-    return;
-  }
-
-  const level = getLevel(levelId);
-  playSession = {
-    levelId,
-    level,
-    mode: level.mode,
+function newSession(c, practice) {
+  return {
+    dayKey: dayKey(),
+    caseId: c.id,
     step: 0,
-    correctCount: 0,
-    totalCount: 0,
-    heartsUsed: 0,
-    comboMax: 0,
-    comboCur: 0,
-    startTime: Date.now(),
-    subStates: {},
-    failed: false,
-    isReplay: !!access.replay
+    answers: [],
+    order: c.decisions.map(function (d) {
+      return shuffled(d.options.map(function (_, i) { return i; }));
+    }),
+    selected: null,
+    stepStartedAt: null,
+    practice: !!practice
   };
-
-  showView('play');
-  renderPlay();
 }
 
-function quitLevel() {
-  if (!playSession) { goHome(); return; }
-  if (confirm('Sair do nível? Seu progresso será perdido.')) {
-    clearPlayAsyncTasks(playSession);
-    playSession = null;
-    goHome();
+function startCase() {
+  if (playedToday()) { showSavedResult(); return; }
+  var c = todaysCase();
+  if (!c) { toast('Nenhum caso disponível hoje.'); return; }
+
+  if (!hasOpenSession()) {
+    session = newSession(c, false);
+    saveProgress(KEY_SESSION, session);
   }
+  renderCase();
 }
 
-// ══════════════════════════════════════════════════════════
-// PLAY: render principal (dispatch por modo)
-// ══════════════════════════════════════════════════════════
-function renderPlay() {
-  const { mode } = playSession;
-  updatePlayProgress();
-  renderPlayHearts();
-
-  if (mode === 'classica' || mode === 'casoraro') return renderClassica();
-  if (mode === 'imagem')     return renderImagem();
-  if (mode === 'triagem')    return renderTriagem();
-  if (mode === 'rapidfire')  return renderRapidFire();
-  if (mode === 'plantao')    return renderPlantao();
-
-  document.getElementById('play-body').innerHTML = '<p>Modo não implementado.</p>';
+/* Modo treino: replay do caso do dia ou caso do arquivo.
+   Vive só em memória — não salva, não conta streak/percentil. */
+function startPractice(caseId) {
+  var c = getCaseById(caseId);
+  if (!c) { toast('Caso não encontrado.'); return; }
+  session = newSession(c, true);
+  session.step = 0;
+  renderCase();
 }
 
-function updatePlayProgress() {
-  const { level, step } = playSession;
-  const total = getModeTotalSteps(level);
-  const pct = Math.min(100, Math.round((step / total) * 100));
-  const fill = document.getElementById('play-progress-fill');
-  if (fill) fill.style.width = pct + '%';
+function quitCase() {
+  stopTimerUI();
+  if (session && session.practice) session = null;
+  showTab(currentTab);
 }
 
-function getModeTotalSteps(level) {
-  if (level.mode === 'imagem')    return level.images.length;
-  if (level.mode === 'triagem')   return level.patients.length;
-  if (level.mode === 'rapidfire') return level.statements.length;
-  if (level.mode === 'plantao')   return level.steps.length;
-  return level.questions.length;
-}
-
-function renderPlayHearts() {
-  const el = document.getElementById('play-hearts-n');
-  if (el) el.textContent = player.isPro ? '∞' : player.hearts;
-}
-
-// ══════════════════════════════════════════════════════════
-// MODO: CLÁSSICA / CASO RARO
-// ══════════════════════════════════════════════════════════
-function renderClassica() {
-  const { level, step } = playSession;
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
-
-  // Primeira tela: mostra o caso
-  if (step === 0 && !playSession.subStates.caseShown) {
-    const isRare = level.mode === 'casoraro';
-    body.innerHTML = `
-      ${isRare ? `<div class="rare-banner">💀 Caso Raro — ${Math.round((level.globalPassRate||0.2)*100)}% dos jogadores acertam.</div>` : ''}
-      <div class="play-prompt">${modeIcon} ${escapeHtml(level.title)}</div>
-      <div class="case-block">
-        <div class="patient">${escapeHtml(level.intro.patient)}</div>
-        <div class="complaint">${escapeHtml(level.intro.complaint)}</div>
-        <div class="vitals">${escapeHtml(level.intro.vitals)}</div>
-        ${level.intro.extra ? `<div class="extra">${escapeHtml(level.intro.extra)}</div>` : ''}
-      </div>
-    `;
-    footer.innerHTML = `
-      <div class="play-footer-inner">
-        <button class="btn-primary" onclick="proceedClassica()">Começar perguntas</button>
-      </div>
-    `;
-    playSession.subStates.caseShown = true;
-    return;
+function selectOption(optIdx) {
+  session.selected = optIdx;
+  // toggle direto no DOM — sem re-render (evita flash e não reinicia animações)
+  var btns = document.querySelectorAll('#view-case .option');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('selected', parseInt(btns[i].getAttribute('data-opt'), 10) === optIdx);
   }
-
-  const q = level.questions[step];
-  if (!q) return finishLevel();
-
-  if (q.type === 'mc')       return renderMcQuestion(q);
-  if (q.type === 'ordering') return renderOrderingQuestion(q);
-  if (q.type === 'tf')       return renderTfQuestion(q);
-
-  body.innerHTML = '<p>Tipo de pergunta não suportado.</p>';
+  var confirmBtn = document.getElementById('btn-confirm');
+  if (confirmBtn) confirmBtn.disabled = false;
 }
 
-function proceedClassica() { renderPlay(); }
-
-function renderMcQuestion(q) {
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  playSession.subStates.mcSelected = null;
-  playSession.subStates.mcAnswered = false;
-
-  body.innerHTML = `
-    <div class="play-prompt">Pergunta ${playSession.step + 1}</div>
-    <div class="question-title">${escapeHtml(q.prompt)}</div>
-    <div class="choice-list">
-      ${q.options.map((opt, i) => `
-        <button class="choice" data-i="${i}" onclick="selectMc(${i})">
-          <span>${escapeHtml(opt)}</span>
-          <span class="check">✓</span>
-        </button>
-      `).join('')}
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" id="confirm-btn" disabled onclick="confirmMc()">Confirmar</button>
-    </div>
-  `;
-}
-
-function selectMc(i) {
-  if (playSession.subStates.mcAnswered) return;
-  playSession.subStates.mcSelected = i;
-  document.querySelectorAll('#play-body .choice').forEach(el => {
-    el.classList.toggle('selected', Number(el.dataset.i) === i);
-  });
-  document.getElementById('confirm-btn').disabled = false;
-}
-
-function confirmMc() {
-  const q = playSession.level.questions[playSession.step];
-  const sel = playSession.subStates.mcSelected;
-  if (sel === null) return;
-  playSession.subStates.mcAnswered = true;
-
-  const isCorrect = sel === q.correct;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  document.querySelectorAll('#play-body .choice').forEach((el, i) => {
-    el.disabled = true;
-    el.classList.remove('selected');
-    if (i === q.correct) el.classList.add('correct');
-    if (i === sel && !isCorrect) el.classList.add('wrong');
-  });
-
-  showFeedback(isCorrect, q.explanation, () => {
-    playSession.step++;
-    renderPlay();
-  });
-}
-
-// ── ORDERING ────────────────────────────────────────────
-function renderOrderingQuestion(q) {
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  if (!playSession.subStates.orderIdx) {
-    // Ordem inicial: embaralha
-    const shuffled = q.items.map((_, i) => i).sort(() => Math.random() - 0.5);
-    playSession.subStates.orderIdx = shuffled;
-    playSession.subStates.orderAnswered = false;
+function advanceStep() {
+  session.step += 1;
+  session.selected = null;
+  // entrou numa decisão → marca início do relógio (persistido: reload não zera)
+  if (session.step === 1 || session.step === 3 || session.step === 5) {
+    session.stepStartedAt = Date.now();
   }
-  const current = playSession.subStates.orderIdx;
-
-  body.innerHTML = `
-    <div class="play-prompt">Pergunta ${playSession.step + 1}</div>
-    <div class="question-title">${escapeHtml(q.prompt)}</div>
-    <div class="order-list" id="order-list">
-      ${current.map((origI, pos) => `
-        <div class="order-item" data-pos="${pos}">
-          <span class="order-index">${pos + 1}</span>
-          <span class="order-text">${escapeHtml(q.items[origI])}</span>
-          <span class="order-arrows">
-            <button class="order-arrow" onclick="moveOrder(${pos}, -1)" ${pos === 0 ? 'disabled' : ''}>▲</button>
-            <button class="order-arrow" onclick="moveOrder(${pos}, 1)" ${pos === current.length - 1 ? 'disabled' : ''}>▼</button>
-          </span>
-        </div>
-      `).join('')}
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" onclick="confirmOrder()">Confirmar</button>
-    </div>
-  `;
+  if (!session.practice) saveProgress(KEY_SESSION, session);
+  renderCase();
 }
 
-function moveOrder(pos, dir) {
-  if (playSession.subStates.orderAnswered) return;
-  const arr = playSession.subStates.orderIdx.slice();
-  const newPos = pos + dir;
-  if (newPos < 0 || newPos >= arr.length) return;
-  [arr[pos], arr[newPos]] = [arr[newPos], arr[pos]];
-  playSession.subStates.orderIdx = arr;
-  renderOrderingQuestion(playSession.level.questions[playSession.step]);
+function confirmDecision() {
+  if (session.selected == null) return;
+  var ms = session.stepStartedAt ? Date.now() - session.stepStartedAt : 0;
+  session.answers.push({ optionIdx: session.selected, ms: ms });
+  session.selected = null;
+
+  if (session.step >= 5) { finishCase(); return; }
+  session.step += 1; // decisão → reveal seguinte
+  if (!session.practice) saveProgress(KEY_SESSION, session);
+  renderCase();
 }
 
-function confirmOrder() {
-  const q = playSession.level.questions[playSession.step];
-  const user = playSession.subStates.orderIdx;
-  const right = q.correctOrder;
-  const isCorrect = JSON.stringify(user) === JSON.stringify(right);
-
-  playSession.subStates.orderAnswered = true;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  const items = document.querySelectorAll('.order-item');
-  items.forEach((el, pos) => {
-    const origIdx = user[pos];
-    const expectedAt = right[pos];
-    el.classList.add(origIdx === expectedAt ? 'correct' : 'wrong');
-  });
-
-  showFeedback(isCorrect, q.explanation, () => {
-    playSession.step++;
-    renderPlay();
-  });
+/* ── STREAK (tick só ao finalizar o caso do dia) ───────────── */
+function daysBetween(k1, k2) {
+  var a = k1.split('-'), b = k2.split('-');
+  var d1 = Date.UTC(+a[0], +a[1] - 1, +a[2]);
+  var d2 = Date.UTC(+b[0], +b[1] - 1, +b[2]);
+  return Math.round((d2 - d1) / 86400000);
 }
 
-// ── TRUE/FALSE ──────────────────────────────────────────
-function renderTfQuestion(q) {
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  if (!playSession.subStates.tfAnswers) {
-    playSession.subStates.tfAnswers = new Array(q.statements.length).fill(null);
-    playSession.subStates.tfAnswered = false;
+function tickStreak() {
+  var today = dayKey();
+  var mk = today.slice(0, 7);
+  var froze = false;
+
+  if (player.monthKey !== mk) {
+    player.monthKey = mk;
+    player.freezesUsedMonth = 0;
   }
 
-  body.innerHTML = `
-    <div class="play-prompt">Pergunta ${playSession.step + 1} — Verdadeiro ou Falso</div>
-    <div class="question-title">${escapeHtml(q.prompt)}</div>
-    <div class="tf-list">
-      ${q.statements.map((s, i) => `
-        <div class="tf-card" data-i="${i}">
-          <div class="tf-text">${escapeHtml(s.text)}</div>
-          <div class="tf-buttons">
-            <button class="tf-btn cert" onclick="setTf(${i}, true)">✅ Certo</button>
-            <button class="tf-btn err"  onclick="setTf(${i}, false)">❌ Errado</button>
-          </div>
-          <div class="tf-note-slot"></div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" id="confirm-tf" onclick="confirmTf()" disabled>Confirmar</button>
-    </div>
-  `;
-  refreshTfVisual();
-}
-
-function setTf(i, val) {
-  if (playSession.subStates.tfAnswered) return;
-  playSession.subStates.tfAnswers[i] = val;
-  refreshTfVisual();
-}
-
-function refreshTfVisual() {
-  const answers = playSession.subStates.tfAnswers;
-  document.querySelectorAll('.tf-card').forEach((card, i) => {
-    const ans = answers[i];
-    const certo = card.querySelector('.cert');
-    const errado = card.querySelector('.err');
-    certo.classList.toggle('selected', ans === true);
-    errado.classList.toggle('selected', ans === false);
-  });
-  const allSet = answers.every(a => a !== null);
-  const btn = document.getElementById('confirm-tf');
-  if (btn) btn.disabled = !allSet;
-}
-
-function confirmTf() {
-  const q = playSession.level.questions[playSession.step];
-  const answers = playSession.subStates.tfAnswers;
-  let rightCount = 0;
-  q.statements.forEach((s, i) => { if (answers[i] === s.answer) rightCount++; });
-  const isCorrect = rightCount === q.statements.length;
-
-  playSession.subStates.tfAnswered = true;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  document.querySelectorAll('.tf-card').forEach((card, i) => {
-    const s = q.statements[i];
-    const certo = card.querySelector('.cert');
-    const errado = card.querySelector('.err');
-    certo.disabled = true; errado.disabled = true;
-    certo.classList.remove('selected'); errado.classList.remove('selected');
-    if (s.answer === true) certo.classList.add('correct'); else errado.classList.add('correct');
-    if (answers[i] !== s.answer) {
-      (answers[i] === true ? certo : errado).classList.add('wrong');
-    }
-    const slot = card.querySelector('.tf-note-slot');
-    if (s.note) {
-      const wrongNote = answers[i] !== s.answer;
-      slot.innerHTML = `<div class="tf-note ${wrongNote ? 'wrong' : ''}">${escapeHtml(s.note)}</div>`;
-    }
-  });
-
-  const summary = isCorrect
-    ? 'Acertou todas! ✅'
-    : `Acertos: ${rightCount}/${q.statements.length}. Revise as notas.`;
-
-  showFeedback(isCorrect, summary, () => {
-    playSession.step++;
-    renderPlay();
-  });
-}
-
-// ══════════════════════════════════════════════════════════
-// MODO: IMAGEM
-// ══════════════════════════════════════════════════════════
-function renderImagem() {
-  const { level, step } = playSession;
-  if (step >= level.images.length) return finishLevel();
-  const img = level.images[step];
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
-  playSession.subStates.imgSel = null;
-  playSession.subStates.imgAnswered = false;
-
-  body.innerHTML = `
-    <div class="play-prompt">${modeIcon} Imagem ${step + 1} de ${level.images.length}</div>
-    <div class="img-counter">
-      ${level.images.map((_, i) => `
-        <span class="dot ${i < step ? 'done' : i === step ? 'current' : ''}"></span>
-      `).join('')}
-    </div>
-    <div class="img-viewer">
-      ${renderMedicalSvg(img.svg)}
-      <div class="img-caption">${escapeHtml(img.caption)}</div>
-    </div>
-    <div class="question-title">${escapeHtml(img.question)}</div>
-    <div class="choice-list">
-      ${img.options.map((opt, i) => `
-        <button class="choice" data-i="${i}" onclick="selectImg(${i})">
-          <span>${escapeHtml(opt)}</span>
-          <span class="check">✓</span>
-        </button>
-      `).join('')}
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" id="confirm-img" disabled onclick="confirmImg()">Confirmar</button>
-    </div>
-  `;
-}
-
-function selectImg(i) {
-  if (playSession.subStates.imgAnswered) return;
-  playSession.subStates.imgSel = i;
-  document.querySelectorAll('#play-body .choice').forEach(el => {
-    el.classList.toggle('selected', Number(el.dataset.i) === i);
-  });
-  document.getElementById('confirm-img').disabled = false;
-}
-
-function confirmImg() {
-  const { level, step } = playSession;
-  const img = level.images[step];
-  const sel = playSession.subStates.imgSel;
-  if (sel === null) return;
-  playSession.subStates.imgAnswered = true;
-
-  const isCorrect = sel === img.correct;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  document.querySelectorAll('#play-body .choice').forEach((el, i) => {
-    el.disabled = true;
-    el.classList.remove('selected');
-    if (i === img.correct) el.classList.add('correct');
-    if (i === sel && !isCorrect) el.classList.add('wrong');
-  });
-
-  showFeedback(isCorrect, img.explanation, () => {
-    playSession.step++;
-    renderPlay();
-  });
-}
-
-// ══════════════════════════════════════════════════════════
-// MODO: TRIAGEM
-// ══════════════════════════════════════════════════════════
-function renderTriagem() {
-  const { level, step } = playSession;
-  if (step >= level.patients.length) return finishLevel();
-  const p = level.patients[step];
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
-
-  playSession.subStates.trSel = null;
-  playSession.subStates.trAnswered = false;
-
-  body.innerHTML = `
-    <div class="play-prompt">${modeIcon} Triagem — ${step + 1} de ${level.patients.length}</div>
-    ${step === 0 ? `<p style="font-size:14px;color:var(--muted);margin-bottom:14px;line-height:1.4">${escapeHtml(level.briefing)}</p>` : ''}
-    <div class="patient-card">
-      <div class="patient-head"><span>${escapeHtml(p.name)}</span></div>
-      <div class="patient-summary">${escapeHtml(p.summary)}</div>
-      <div class="patient-options">
-        ${level.colors.map(c => `
-          <button class="patient-opt" data-id="${c.id}" onclick="selectColor('${c.id}')">
-            <span class="opt-emoji">${c.emoji}</span>
-            ${c.label}
-          </button>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" id="confirm-tr" disabled onclick="confirmTriagem()">Confirmar</button>
-    </div>
-  `;
-}
-
-function selectColor(id) {
-  if (playSession.subStates.trAnswered) return;
-  playSession.subStates.trSel = id;
-  document.querySelectorAll('.patient-opt').forEach(el => {
-    el.classList.toggle('selected', el.dataset.id === id);
-  });
-  document.getElementById('confirm-tr').disabled = false;
-}
-
-function confirmTriagem() {
-  const { level, step } = playSession;
-  const p = level.patients[step];
-  const sel = playSession.subStates.trSel;
-  if (!sel) return;
-  playSession.subStates.trAnswered = true;
-
-  const isCorrect = sel === p.correct;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  document.querySelectorAll('.patient-opt').forEach(el => {
-    el.disabled = true;
-    el.classList.remove('selected');
-    if (el.dataset.id === p.correct) el.classList.add('correct');
-    if (el.dataset.id === sel && !isCorrect) el.classList.add('wrong');
-  });
-
-  showFeedback(isCorrect, p.reason, () => {
-    playSession.step++;
-    renderPlay();
-  });
-}
-
-// ══════════════════════════════════════════════════════════
-// MODO: RAPID FIRE
-// ══════════════════════════════════════════════════════════
-function renderRapidFire() {
-  const { level, step } = playSession;
-  if (step >= level.statements.length) return finishLevel();
-  clearPlayAsyncTasks(playSession);
-  const s = level.statements[step];
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-
-  playSession.subStates.rfAnswered = false;
-
-  const combo = playSession.comboCur;
-  body.innerHTML = `
-    <div class="rf-wrap">
-      <div class="rf-counter">Afirmação ${step + 1} de ${level.statements.length}</div>
-      <div class="rf-timer"><div class="rf-timer-fill" id="rf-timer-fill" style="width:100%"></div></div>
-      <div class="rf-combo">${combo >= 3 ? '🔥 COMBO x' + combo : ''}</div>
-      <div class="rf-card">${escapeHtml(s.text)}</div>
-      <div class="rf-buttons">
-        <button class="rf-btn certo"  onclick="answerRf(true)">✅ Certo</button>
-        <button class="rf-btn errado" onclick="answerRf(false)">❌ Errado</button>
-      </div>
-    </div>
-  `;
-  footer.innerHTML = '';
-
-  const sessionRef = playSession;
-  const timeLimit = level.timePerStatement * 1000;
-  const startTime = Date.now();
-  playSession.subStates.rfInterval = setInterval(() => {
-    if (!playSession || playSession !== sessionRef) {
-      clearPlayAsyncTasks(sessionRef);
-      return;
-    }
-    const elapsed = Date.now() - startTime;
-    const remaining = Math.max(0, timeLimit - elapsed);
-    const pct = (remaining / timeLimit) * 100;
-    const fill = document.getElementById('rf-timer-fill');
-    if (fill) fill.style.width = pct + '%';
-    if (remaining <= 0) {
-      clearInterval(playSession.subStates.rfInterval);
-      if (!playSession.subStates.rfAnswered) answerRf(null);
-    }
-  }, 50);
-}
-
-function answerRf(userAnswer) {
-  if (!playSession) return;
-  if (playSession.subStates.rfAnswered) return;
-  playSession.subStates.rfAnswered = true;
-  clearPlayAsyncTasks(playSession);
-
-  const { level, step } = playSession;
-  const sessionRef = playSession;
-  const s = level.statements[step];
-  const isCorrect = userAnswer === s.answer;
-
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  const wrap = document.querySelector('.rf-wrap');
-  if (wrap) {
-    const noteHtml = `<div class="tf-note ${isCorrect ? '' : 'wrong'}" style="margin-top:16px">${escapeHtml((isCorrect ? '✅ ' : '❌ ') + (s.note || (isCorrect ? 'Correto.' : 'A resposta era ' + (s.answer ? 'CERTO' : 'ERRADO') + '.')))}</div>`;
-    wrap.insertAdjacentHTML('beforeend', noteHtml);
-  }
-
-  playSession.subStates.rfAdvanceTimeout = setTimeout(() => {
-    if (!playSession || playSession !== sessionRef) return;
-    playSession.step++;
-    renderPlay();
-  }, 1600);
-}
-
-// ══════════════════════════════════════════════════════════
-// MODO: PLANTÃO SIMULADO
-// ══════════════════════════════════════════════════════════
-function renderPlantao() {
-  const { level, step } = playSession;
-  if (step >= level.steps.length) return finishLevel();
-  const s = level.steps[step];
-  const body = document.getElementById('play-body');
-  const footer = document.getElementById('play-footer');
-  const modeIcon = levelEmojiHtml(level, 'case-emoji inline');
-  playSession.subStates.plSel = null;
-  playSession.subStates.plAnswered = false;
-
-  body.innerHTML = `
-    <div class="play-prompt">${modeIcon} ${escapeHtml(level.title)}</div>
-    ${step === 0 ? `<div class="plantao-scene">${escapeHtml(level.setup)}</div>` : ''}
-    <div class="plantao-step">Etapa ${s.step}</div>
-    <div class="plantao-scene">${escapeHtml(s.scene)}</div>
-    <div class="question-title">${escapeHtml(s.prompt)}</div>
-    <div class="choice-list">
-      ${s.options.map((opt, i) => `
-        <button class="choice" data-i="${i}" onclick="selectPl(${i})">
-          <span>${escapeHtml(opt)}</span>
-          <span class="check">✓</span>
-        </button>
-      `).join('')}
-    </div>
-  `;
-  footer.innerHTML = `
-    <div class="play-footer-inner">
-      <button class="btn-primary" id="confirm-pl" disabled onclick="confirmPl()">Confirmar</button>
-    </div>
-  `;
-}
-
-function selectPl(i) {
-  if (playSession.subStates.plAnswered) return;
-  playSession.subStates.plSel = i;
-  document.querySelectorAll('#play-body .choice').forEach(el => {
-    el.classList.toggle('selected', Number(el.dataset.i) === i);
-  });
-  document.getElementById('confirm-pl').disabled = false;
-}
-
-function confirmPl() {
-  const { level, step } = playSession;
-  const s = level.steps[step];
-  const sel = playSession.subStates.plSel;
-  if (sel === null) return;
-  playSession.subStates.plAnswered = true;
-
-  const isCorrect = sel === s.correct;
-  playSession.totalCount++;
-  if (isCorrect) { playSession.correctCount++; bumpCombo(); }
-  else          { resetCombo(); chargeHeart(); }
-
-  document.querySelectorAll('#play-body .choice').forEach((el, i) => {
-    el.disabled = true;
-    el.classList.remove('selected');
-    if (i === s.correct) el.classList.add('correct');
-    if (i === sel && !isCorrect) el.classList.add('wrong');
-  });
-
-  const msg = isCorrect ? s.feedbackOk : s.feedbackKo;
-  showFeedback(isCorrect, msg, () => {
-    playSession.step++;
-    renderPlay();
-  });
-}
-
-// ══════════════════════════════════════════════════════════
-// SISTEMAS: COMBO, HEARTS, FEEDBACK, FINAL
-// ══════════════════════════════════════════════════════════
-function bumpCombo() {
-  playSession.comboCur++;
-  playSession.comboMax = Math.max(playSession.comboMax, playSession.comboCur);
-}
-function resetCombo() { playSession.comboCur = 0; }
-
-function chargeHeart() {
-  if (player.isPro) return;
-  if (playSession.isReplay) return;
-  loseHeart();
-  playSession.heartsUsed++;
-  renderPlayHearts();
-  renderHeaderStats();
-  savePlayer();
-}
-
-function showFeedback(isOk, text, onContinue) {
-  const prev = document.querySelector('.feedback');
-  if (prev) prev.remove();
-
-  const el = document.createElement('div');
-  el.className = 'feedback ' + (isOk ? 'ok' : 'wrong');
-  el.innerHTML = `
-    <div class="feedback-inner">
-      <div class="feedback-head">${isOk ? '✅ Correto!' : '❌ Não foi dessa vez'}</div>
-      <div class="feedback-body">${escapeHtml(text || '')}</div>
-      <button class="btn-primary" id="fb-continue">Continuar</button>
-    </div>
-  `;
-  document.body.appendChild(el);
-  document.getElementById('fb-continue').addEventListener('click', () => {
-    el.remove();
-    onContinue && onContinue();
-  });
-}
-
-async function finishLevel() {
-  if (!playSession) return;
-  clearPlayAsyncTasks(playSession);
-  const { level, correctCount, totalCount, comboMax, heartsUsed, startTime } = playSession;
-  const perfect = correctCount === totalCount && totalCount > 0;
-  const firstOfDay = !hasCompletionOnDay(todayKey());
-  const diffMult = DIFFICULTY[level.difficulty]?.xpMult || 1;
-
-  const xpGained = awardLevelXp({
-    correct: correctCount,
-    total: totalCount,
-    perfectRun: perfect,
-    firstOfDay,
-    comboMax,
-    difficultyMult: diffMult,
-    isReplay: playSession.isReplay
-  });
-  const gemsGained = playSession.isReplay ? 0 : (GEMS.levelComplete + (perfect ? GEMS.perfectScore : 0));
-
-  if (xpGained > 0) addXp(xpGained);
-  if (gemsGained > 0) addGems(gemsGained);
-  const streakInfo = tickStreak();
-  markLevelComplete(level.id, { score: correctCount, total: totalCount, perfect, xp: xpGained });
-  const questReward = awardCompletedQuestXp();
-
-  const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-  const saveResult = await savePlayer();
-
-  showView('complete');
-  renderHeaderStats();
-  renderComplete({ level, correctCount, totalCount, perfect, xpGained, questReward, gemsGained, streakInfo, heartsUsed, elapsedSec });
-  if (currentUser && saveResult && saveResult.fallback) {
-    toast('Progresso guardado neste dispositivo. Vamos tentar sincronizar sua conta novamente.');
-  }
-
-  if (perfect) fireConfetti();
-  playSession = null;
-}
-
-// ══════════════════════════════════════════════════════════
-// MODAIS E HEART REFILL UI
-// ══════════════════════════════════════════════════════════
-function openModal(name) {
-  const m = document.getElementById('modal-' + name);
-  if (m) m.style.display = 'flex';
-  if (name === 'nohearts') updateHeartTimer();
-}
-function closeModal(name) {
-  const m = document.getElementById('modal-' + name);
-  if (m) m.style.display = 'none';
-  if (name === 'nohearts' && _heartTimerHandle) {
-    clearTimeout(_heartTimerHandle);
-    _heartTimerHandle = null;
-  }
-}
-
-var _heartTimerHandle = null;
-function updateHeartTimer() {
-  const modal = document.getElementById('modal-nohearts');
-  const el = document.getElementById('next-heart-timer');
-  // Para o ciclo se o modal foi fechado — evita timers zumbis em background.
-  if (!el || !modal || modal.style.display === 'none') {
-    _heartTimerHandle = null;
-    return;
-  }
-  const ms = timeUntilNextHeart();
-  if (ms <= 0) { el.textContent = 'agora!'; _heartTimerHandle = null; return; }
-  const min = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  el.textContent = `${min}min ${sec}s`;
-  if (_heartTimerHandle) clearTimeout(_heartTimerHandle);
-  _heartTimerHandle = setTimeout(updateHeartTimer, 1000);
-}
-
-function buyHeartsWithGems() {
-  if (fillHeartsWithGems()) {
-    toast('Corações cheios!');
-    renderHeaderStats();
-    savePlayer();
-    closeModal('nohearts');
-    if (playSession) renderPlay();
+  if (!player.lastPlayedDay) {
+    player.streak = 1;
   } else {
-    toast('Gemas insuficientes.');
+    var gap = daysBetween(player.lastPlayedDay, today);
+    if (gap <= 0) {
+      return { froze: false }; // já contou hoje
+    } else if (gap === 1) {
+      player.streak += 1;
+    } else if (gap === 2 && player.freezesUsedMonth < 2) {
+      player.freezesUsedMonth += 1;
+      player.streak += 1;
+      froze = true;
+    } else {
+      player.streak = 1;
+    }
+  }
+
+  player.lastPlayedDay = today;
+  if (player.streak > player.bestStreak) player.bestStreak = player.streak;
+  return { froze: froze };
+}
+
+/* ── FINALIZAÇÃO ───────────────────────────────────────────── */
+var currentResultCtx = null; // contexto do share
+
+function finishCase() {
+  stopTimerUI();
+  var c = getCaseById(session.caseId);
+  var score = computeScore(c, session.answers);
+
+  if (session.practice) {
+    var practiceEntry = {
+      caseId: c.id,
+      answers: session.answers,
+      seals: score.seals,
+      perDecision: score.perDecision,
+      composite: score.composite,
+      percentile: null
+    };
+    session = null;
+    showResult(practiceEntry, c, null, { practice: true });
+    return;
+  }
+
+  var streakInfo = tickStreak();
+  var xpGained = 10 * (c.difficulty || 1);
+  player.xp += xpGained;
+
+  var entry = {
+    caseId: c.id,
+    answers: session.answers,
+    seals: score.seals,
+    perDecision: score.perDecision,
+    composite: score.composite,
+    xp: xpGained,
+    percentile: null,
+    finishedAt: Date.now()
+  };
+  daily[dayKey()] = entry;
+
+  session = null;
+  saveProgress(KEY_DAILY, daily);
+  saveProgress(KEY_PLAYER, player);
+  saveProgress(KEY_SESSION, null);
+  renderHeaderStats();
+
+  showResult(entry, c, streakInfo.froze
+    ? '🧊 Seu streak foi protegido (' + player.freezesUsedMonth + '/2 este mês)'
+    : null);
+
+  // percentil: envia e busca em background
+  var dk = dayKey();
+  submitDailyResult(dk, c.id, entry.composite, entry.seals).then(function () {
+    return fetchPercentile(dk, entry.composite);
+  }).then(function (info) {
+    if (info && typeof info.percentile === 'number') {
+      entry.percentile = info.percentile;
+      saveProgress(KEY_DAILY, daily);
+    }
+    updatePercentileLine(info);
+  });
+}
+
+/* resultado já salvo (reabriu a página depois de jogar) */
+function showSavedResult() {
+  var entry = daily[dayKey()];
+  if (!entry) { renderHome(); return; }
+  var c = getCaseById(entry.caseId);
+  if (!c) { renderHome(); return; }
+  showResult(entry, c, null);
+
+  if (entry.percentile == null) {
+    fetchPercentile(dayKey(), entry.composite).then(function (info) {
+      if (info && typeof info.percentile === 'number') {
+        entry.percentile = info.percentile;
+        saveProgress(KEY_DAILY, daily);
+      }
+      updatePercentileLine(info);
+    });
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// CONFETTI + SHARE + HELPERS
-// ══════════════════════════════════════════════════════════
-function fireConfetti() {
-  const layer = document.createElement('div');
-  layer.className = 'confetti';
-  const colors = ['#cefc8a', '#d2cbfe', '#ffb86c', '#fca5f1', '#6ad1ff'];
-  for (let i = 0; i < 50; i++) {
-    const p = document.createElement('i');
-    p.style.left = Math.random() * 100 + '%';
-    p.style.background = colors[Math.floor(Math.random() * colors.length)];
-    p.style.animationDelay = (Math.random() * 0.3) + 's';
-    p.style.animationDuration = (1 + Math.random() * 0.6) + 's';
-    p.style.transform = `rotate(${Math.random() * 360}deg)`;
-    layer.appendChild(p);
+function showResult(entry, caseData, frozeNote, opts) {
+  opts = opts || {};
+  var theme = THEMES[caseData.theme] || { icon: '🩺' };
+  currentResultCtx = {
+    themeIcon: theme.icon,
+    dayNumber: dayNumber(),
+    perDecision: entry.perDecision,
+    seals: entry.seals,
+    percentile: entry.percentile,
+    streak: player.streak || 0
+  };
+  renderResult({
+    caseData: caseData,
+    result: { seals: entry.seals, perDecision: entry.perDecision, answers: entry.answers },
+    streak: player.streak || 0,
+    frozeNote: frozeNote,
+    dayNumber: dayNumber(),
+    practice: !!opts.practice,
+    composite: entry.composite,
+    xpGained: opts.practice ? 0 : (entry.xp || 10 * (caseData.difficulty || 1)),
+    xpTotal: player.xp || 0,
+    percentileInfo: typeof entry.percentile === 'number' ? { percentile: entry.percentile } : null
+  });
+}
+
+/* ── ARQUIVO (casos de dias anteriores) ────────────────────── */
+function archiveList() {
+  var q = activeQueue();
+  if (!q.length) return [];
+  var list = [];
+  for (var n = dayNumber() - 1; n >= 1; n--) {
+    var dk = new Date(EPOCH_BRT + (n - 1) * 86400000).toISOString().slice(0, 10);
+    var c = getCaseById(q[(((n - 1) % q.length) + q.length) % q.length]);
+    list.push({ n: n, dayKey: dk, caseData: c, entry: daily[dk] || null });
   }
-  document.body.appendChild(layer);
-  setTimeout(() => layer.remove(), 2000);
+  return list;
 }
 
-function shareResult(level, correctCount, totalCount, xp) {
-  const lines = [
-    `🏥 CONDUTA · Nível ${level.number} — ${level.title}`,
-    `${MODES[level.mode].label} · ${DIFFICULTY[level.difficulty].label}`,
-    `Acertos: ${correctCount}/${totalCount} · +${xp} XP`,
-    `🔥 Streak: ${player.streak} dias`,
-    `Treine sua conduta clínica → conduta.cc`
-  ];
-  return lines.join('\n');
+function shareCurrentResult() {
+  if (!currentResultCtx) return;
+  currentResultCtx.percentile = (daily[dayKey()] || {}).percentile;
+  shareResult(currentResultCtx);
+}
+function copyCurrentResult() {
+  if (!currentResultCtx) return;
+  currentResultCtx.percentile = (daily[dayKey()] || {}).percentile;
+  copyShareText(currentResultCtx);
 }
 
-function shareWhatsapp(text) {
-  const url = 'https://wa.me/?text=' + encodeURIComponent(text);
-  window.open(url, '_blank');
+/* ── BOOT ──────────────────────────────────────────────────── */
+function boot() {
+  loadStateSync();
+  renderApp();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('service-worker.js').catch(function () {});
+  }
 }
 
-function copyShare(text) {
-  navigator.clipboard?.writeText(text).then(
-    () => toast('Copiado!'),
-    () => toast('Não foi possível copiar.')
-  );
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
 }
 
-function toast(msg) {
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.textContent = msg;
-  t.style.display = 'block';
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.style.display = 'none'; }, 2400);
-}
-
-function escapeHtml(s) {
-  if (s === undefined || s === null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// Expor globalmente
-window.boot = boot;
 window.goHome = goHome;
-window.goProfile = goProfile;
-window.setTab = setTab;
-window.startLevel = startLevel;
-window.quitLevel = quitLevel;
-window.selectMc = selectMc;
-window.confirmMc = confirmMc;
-window.proceedClassica = proceedClassica;
-window.moveOrder = moveOrder;
-window.confirmOrder = confirmOrder;
-window.setTf = setTf;
-window.confirmTf = confirmTf;
-window.selectImg = selectImg;
-window.confirmImg = confirmImg;
-window.selectColor = selectColor;
-window.confirmTriagem = confirmTriagem;
-window.answerRf = answerRf;
-window.selectPl = selectPl;
-window.confirmPl = confirmPl;
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.buyHeartsWithGems = buyHeartsWithGems;
-window.shareResult = shareResult;
-window.shareWhatsapp = shareWhatsapp;
-window.copyShare = copyShare;
-window.toast = toast;
-window.savePlayer = savePlayer;
-window.escapeHtml = escapeHtml;
-window.renderBootMessage = renderBootMessage;
-window.renderBootError = renderBootError;
-
-boot();
+window.showTab = showTab;
+window.openArchive = openArchive;
+window.startCase = startCase;
+window.startPractice = startPractice;
+window.showSavedResult = showSavedResult;
+window.archiveList = archiveList;
+window.getPlayerName = getPlayerName;
+window.hasCustomName = hasCustomName;
+window.setPlayerName = setPlayerName;
+window.playedCount = playedCount;
+window.quitCase = quitCase;
+window.selectOption = selectOption;
+window.advanceStep = advanceStep;
+window.confirmDecision = confirmDecision;
+window.completeOnboarding = completeOnboarding;
+window.maybeReloadPlayerFromStorage = maybeReloadPlayerFromStorage;
+window.shareCurrentResult = shareCurrentResult;
+window.copyCurrentResult = copyCurrentResult;
+window.brtNow = brtNow;
+window.dayKey = dayKey;
+window.dayNumber = dayNumber;
+window.msUntilMidnightBRT = msUntilMidnightBRT;
+window.todaysCase = todaysCase;
+window.hasOpenSession = hasOpenSession;
