@@ -48,6 +48,9 @@ function setPlayerName(name) {
   name = (name || '').trim().slice(0, 24);
   player.name = name || null;
   saveProgress(KEY_PLAYER, player);
+  // salva também na plataforma (perfil): nome editado propaga
+  // pro ranking da liga e sobrevive a troca de dispositivo
+  if (name && typeof syncProfileName === 'function') syncProfileName(name);
   renderHeaderStats();
 }
 function playedCount() { return daily ? Object.keys(daily).length : 0; }
@@ -338,6 +341,26 @@ function showResult(entry, caseData, frozeNote, opts) {
   });
 }
 
+/* últimos 7 dias (mais antigo → hoje): { dayKey, isToday, played, seal }
+   'seal' = pior selo do dia (verde/amarelo/vermelho) como resumo visual */
+function lastSevenDays() {
+  var out = [];
+  var todayMs = brtNow().setUTCHours(0, 0, 0, 0);
+  for (var i = 6; i >= 0; i--) {
+    var dk = new Date(todayMs - i * 86400000).toISOString().slice(0, 10);
+    var e = daily && daily[dk];
+    var seal = null;
+    if (e && e.seals) {
+      var order = ['g', 'y', 'r'];
+      seal = ['diag', 'seg', 'rap', 'cond']
+        .map(function (k) { return e.seals[k]; })
+        .sort(function (a, b) { return order.indexOf(b) - order.indexOf(a); })[0];
+    }
+    out.push({ dayKey: dk, isToday: i === 0, played: !!e, seal: seal });
+  }
+  return out;
+}
+
 /* ── ARQUIVO (casos de dias anteriores) ────────────────────── */
 function archiveList() {
   var q = activeQueue();
@@ -384,6 +407,7 @@ window.startCase = startCase;
 window.startPractice = startPractice;
 window.showSavedResult = showSavedResult;
 window.archiveList = archiveList;
+window.lastSevenDays = lastSevenDays;
 window.getPlayerName = getPlayerName;
 window.hasCustomName = hasCustomName;
 window.setPlayerName = setPlayerName;

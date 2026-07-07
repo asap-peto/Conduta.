@@ -299,13 +299,27 @@ body::after {
 .seal-muted { background: var(--muted2); }
 
 /* ── HOME ───────────────────────────────────────────────── */
+/* coluna contida — não estica no desktop */
 .home-wrap {
-  padding-top: 8px;
+  min-height: calc(100dvh - 200px);
+  max-width: 460px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 214px);
+  padding-top: 8px;
 }
-.home-focus { margin: auto 0; }
+/* saudação + hero de stats: grupo fixo no topo */
+.home-header { display: flex; flex-direction: column; gap: 10px; }
+/* card do paciente: separado, centralizado no espaço restante */
+.home-play {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+.home-wrap .greet-card,
+.home-wrap .home-date { margin-bottom: 0; }
 
 .greet-card {
   display: flex;
@@ -426,6 +440,53 @@ body::after {
   text-align: center;
 }
 .home-countdown b { color: var(--lime); }
+
+/* faixa de stats (últimos 7 dias + XP + recorde) */
+.home-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: linear-gradient(180deg, rgba(74,32,80,.5) 0%, var(--bg2) 60%, rgba(27,2,30,.35) 100%);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 13px 16px;
+  box-shadow: var(--hard-sm);
+}
+.week-strip { display: flex; flex-direction: column; gap: 7px; }
+.week-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.week-dots { display: flex; gap: 5px; }
+.week-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  border: 1.5px solid var(--edge);
+  background: var(--bg3);
+}
+.week-dot.day-g { background: var(--lime); }
+.week-dot.day-y { background: var(--yellow); }
+.week-dot.day-r { background: var(--error); }
+.week-dot.day-today {
+  background: transparent;
+  border-color: var(--pink);
+  box-shadow: 0 0 6px rgba(252, 165, 241, .45);
+}
+.week-dot.day-empty { background: var(--bg3); border-color: var(--stroke); opacity: .5; }
+.quick-stats { display: flex; gap: 16px; }
+.qstat {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.qstat b { color: var(--lime); font-weight: 500; }
 
 /* ── ABAS GENÉRICAS ─────────────────────────────────────── */
 .tab-wrap { padding-top: 8px; }
@@ -1000,6 +1061,23 @@ body::after {
 .nav-item .icn { stroke: currentColor; }
 .nav-item.active { color: var(--edge); background: var(--lime); }
 .nav-item:not(.active):hover { color: var(--lilac); }
+
+/* ícones custom (home/arquivo/liga) via máscara — herdam a cor */
+.nav-ic {
+  display: inline-block;
+  width: 21px;
+  height: 21px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+          mask-position: center;
+  -webkit-mask-size: contain;
+          mask-size: contain;
+}
+.nav-ic-home    { -webkit-mask-image: url(nav-home.svg);    mask-image: url(nav-home.svg); }
+.nav-ic-arquivo { -webkit-mask-image: url(nav-arquivo.svg); mask-image: url(nav-arquivo.svg); }
+.nav-ic-liga    { -webkit-mask-image: url(nav-liga.svg);    mask-image: url(nav-liga.svg); }
 
 /* ── MODAIS ─────────────────────────────────────────────── */
 .modal-backdrop {

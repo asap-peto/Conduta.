@@ -71,6 +71,36 @@ async function fetchPercentile(dayKey, composite) {
   }
 }
 
+/* ══ PERFIL NA PLATAFORMA ══════════════════════════════════
+   Nome editável salvo no Supabase (RPC upsert_profile).
+   Funciona sem login; com login o perfil é vinculado à conta.
+   Falha silenciosa: sem rede/SQL, o nome continua local. */
+
+async function syncProfileName(name) {
+  if (!_supabase) return false;
+  var clientId = getClientId();
+  if (!clientId || !name) return false;
+  try {
+    var res = await _supabase.rpc('upsert_profile', { p_client: clientId, p_name: name });
+    return !!(res.data && res.data.ok);
+  } catch (e) {
+    return false;
+  }
+}
+
+/* recupera o nome salvo na plataforma (ex.: aparelho novo logado) */
+async function fetchProfile() {
+  if (!_supabase) return null;
+  var clientId = getClientId();
+  if (!clientId) return null;
+  try {
+    var res = await _supabase.rpc('get_profile', { p_client: clientId });
+    return res.data || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 /* ══ LIGA COM AMIGOS ═══════════════════════════════════════
    Grupo fechado por código de convite. Membros identificados
    pelo client_id (sem login). Ranking semanal = soma do
@@ -137,10 +167,18 @@ async function joinLeagueGroup(code, displayName) {
     localStorage.setItem(GROUP_NAME_KEY, g.data.name);
     localStorage.setItem(DISPLAY_NAME_KEY, displayName);
   } catch (e) {}
+  syncProfileName(displayName); // nome também vira perfil na plataforma
   return { code: code, name: g.data.name };
 }
 
 function leaveLeagueGroup() {
+  var code = getGroupCode();
+  // remove a linha no servidor (fire-and-forget) e limpa o local
+  if (_supabase && code) {
+    try {
+      _supabase.rpc('league_leave', { p_code: code, p_client: getClientId() });
+    } catch (e) {}
+  }
   try {
     localStorage.removeItem(GROUP_CODE_KEY);
     localStorage.removeItem(GROUP_NAME_KEY);
@@ -169,6 +207,8 @@ async function fetchLeagueLeaderboard() {
 window.getClientId = getClientId;
 window.submitDailyResult = submitDailyResult;
 window.fetchPercentile = fetchPercentile;
+window.syncProfileName = syncProfileName;
+window.fetchProfile = fetchProfile;
 window.getGroupCode = getGroupCode;
 window.getGroupName = getGroupName;
 window.getDisplayName = getDisplayName;

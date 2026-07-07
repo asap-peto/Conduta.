@@ -2,7 +2,7 @@
 -- schema.sql — Conduta.
 -- Schema completo do Supabase. IDEMPOTENTE: pode colar e rodar
 -- o arquivo INTEIRO no SQL Editor quantas vezes quiser — blocos
--- já aplicados não quebram.
+-- já aplicados não quebram e versões antigas são substituídas.
 --
 -- Guia de setup passo a passo (incluindo login Google/magic
 -- link no painel): ver SUPABASE.md.
@@ -10,7 +10,18 @@
 -- Blocos:
 --   1. user_progress  — progresso do jogador logado (auth)
 --   2. daily_results  — percentil do caso do dia (anônimo)
---   3. liga           — grupos de amigos por código de convite
+--   3. profiles       — perfil do jogador (nome editável,
+--                       identidade pública p/ social futuro)
+--   4. liga           — grupos de amigos por código de convite
+--
+-- Modelo de identidade (importante):
+--   client_id  = uuid gerado no dispositivo. É o "segredo" do
+--                jogador anônimo — NUNCA sai do servidor em
+--                consultas de terceiros.
+--   public_id  = uuid público do perfil, seguro de expor —
+--                é ele que viabiliza "adicionar amigos" depois.
+--   user_id    = conta Supabase (opcional), vincula o perfil
+--                quando a pessoa faz login.
 -- ============================================================
 
 
@@ -43,9 +54,8 @@ CREATE INDEX IF NOT EXISTS idx_user_progress_user_key
 
 -- ════════════════════════════════════════════════════════════
 -- 2. PERCENTIL DO DIA
---    Resultados anônimos do caso do dia, identificados por um
---    client_id gerado no dispositivo (não requer login).
---    Modelo de acesso:
+--    Resultados anônimos do caso do dia, identificados pelo
+--    client_id do dispositivo (não requer login).
 --    - anon INSERE, e só com day_key = hoje (BRT);
 --    - NINGUÉM lê linhas cruas — leitura só via RPC agregada;
 --    - UNIQUE(client_id, day_key) = 1 resultado/dia/dispositivo.
@@ -89,19 +99,128 @@ CREATE INDEX IF NOT EXISTS idx_daily_results_day ON daily_results(day_key);
 
 
 -- ════════════════════════════════════════════════════════════
--- 3. LIGA COM AMIGOS
+-- 3. PERFIL DO JOGADOR
+--    Nome editável salvo na plataforma + identidade pública.
+--    Funciona SEM login (via client_id); com login, vincula
+--    o user_id e o perfil acompanha a conta.
+--    - Sem SELECT/INSERT/UPDATE diretos: tudo via RPC validada;
+--    - handle (@apelido) opcional e único — é a base para
+--      busca de amigos no futuro, sem expor o client_id.
+-- ════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS profiles (
+  client_id uuid PRIMARY KEY,
+  public_id uuid UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  display_name text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 24),
+  handle text UNIQUE CHECK (handle ~ '^[a-z0-9_]{3,20}$'),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- (sem policies = sem acesso direto; só via RPCs SECURITY DEFINER)
+
+CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+
+-- cria/edita o próprio perfil (nome e, opcionalmente, handle).
+-- Vincula auth.uid() quando logado. Erros voltam como json.
+CREATE OR REPLACE FUNCTION upsert_profile(p_client uuid, p_name text, p_handle text DEFAULT NULL)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name   text := left(btrim(coalesce(p_name, '')), 24);
+  v_handle text := nullif(lower(btrim(coalesce(p_handle, ''))), '');
+  v_row    profiles;
+BEGIN
+  IF char_length(v_name) < 1 THEN
+    RETURN json_build_object('error', 'nome inválido');
+  END IF;
+  IF v_handle IS NOT NULL AND v_handle !~ '^[a-z0-9_]{3,20}$' THEN
+    RETURN json_build_object('error', 'handle inválido — 3 a 20 caracteres: a–z, 0–9 e _');
+  END IF;
+
+  INSERT INTO profiles (client_id, user_id, display_name, handle)
+  VALUES (p_client, auth.uid(), v_name, v_handle)
+  ON CONFLICT (client_id) DO UPDATE
+    SET display_name = excluded.display_name,
+        handle       = coalesce(excluded.handle, profiles.handle),
+        user_id      = coalesce(profiles.user_id, excluded.user_id),
+        updated_at   = now()
+  RETURNING * INTO v_row;
+
+  RETURN json_build_object(
+    'ok', true,
+    'display_name', v_row.display_name,
+    'handle', v_row.handle,
+    'public_id', v_row.public_id
+  );
+EXCEPTION WHEN unique_violation THEN
+  RETURN json_build_object('error', 'esse handle já está em uso');
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION upsert_profile TO anon, authenticated;
+
+-- lê o próprio perfil: pelo client_id do dispositivo ou, se
+-- logado, pelo user_id (recupera o nome em um aparelho novo).
+CREATE OR REPLACE FUNCTION get_profile(p_client uuid)
+RETURNS json
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT json_build_object(
+    'display_name', display_name,
+    'handle', handle,
+    'public_id', public_id
+  )
+  FROM profiles
+  WHERE client_id = p_client
+     OR (auth.uid() IS NOT NULL AND user_id = auth.uid())
+  ORDER BY (client_id = p_client) DESC, updated_at DESC
+  LIMIT 1;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_profile TO anon, authenticated;
+
+-- busca pública por handle (base do "adicionar amigo" futuro).
+-- Expõe SÓ nome, handle e public_id — nunca o client_id.
+CREATE OR REPLACE FUNCTION find_profile_by_handle(p_handle text)
+RETURNS json
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT json_build_object(
+    'display_name', display_name,
+    'handle', handle,
+    'public_id', public_id
+  )
+  FROM profiles
+  WHERE handle = lower(btrim(p_handle));
+$$;
+
+GRANT EXECUTE ON FUNCTION find_profile_by_handle TO anon, authenticated;
+
+
+-- ════════════════════════════════════════════════════════════
+-- 4. LIGA COM AMIGOS
 --    Grupos fechados por código de convite de 6 caracteres.
---    Membros identificados pelo client_id do dispositivo.
---    Modelo de acesso (o CÓDIGO é o segredo do convite):
+--    O CÓDIGO é o segredo do convite:
 --    - anon pode CRIAR grupo e ENTRAR como membro;
---    - ninguém lê grupos nem membros direto (sem SELECT):
---      validação de convite via RPC league_group_info, ranking
---      via RPC league_leaderboard — ambas agregadas;
---    - o ranking NUNCA devolve client_id de ninguém: o "é você"
---      é calculado no servidor comparando com o p_client enviado;
---    - sem UPDATE/DELETE pra anon: entrar de novo no mesmo grupo
---      é um INSERT que conflita (23505) e o app trata como
---      "já sou membro". Ninguém renomeia ninguém.
+--    - ninguém lê grupos/membros direto (sem SELECT): validação
+--      via league_group_info, ranking via league_leaderboard;
+--    - o ranking usa o nome do PERFIL quando existir (editou o
+--      nome no perfil → atualiza no ranking) e NUNCA devolve
+--      client_id de ninguém — o "é você" vem calculado;
+--    - sair do grupo via RPC league_leave (só remove a si mesmo);
+--    - sem UPDATE/DELETE diretos pra anon.
 -- ════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS league_groups (
@@ -142,8 +261,12 @@ SECURITY DEFINER
 STABLE
 SET search_path = public
 AS $$
-  SELECT json_build_object('code', code, 'name', name)
-  FROM league_groups WHERE code = upper(p_code);
+  SELECT json_build_object(
+    'code', g.code,
+    'name', g.name,
+    'members', (SELECT count(*) FROM league_members m WHERE m.group_code = g.code)
+  )
+  FROM league_groups g WHERE g.code = upper(p_code);
 $$;
 
 GRANT EXECUTE ON FUNCTION league_group_info TO anon, authenticated;
@@ -151,7 +274,8 @@ GRANT EXECUTE ON FUNCTION league_group_info TO anon, authenticated;
 -- remove a assinatura antiga (sem p_client), se existir
 DROP FUNCTION IF EXISTS league_leaderboard(text, text, text);
 
--- ranking semanal agregado; is_you calculado no servidor
+-- ranking semanal agregado; nome vem do perfil (se existir),
+-- is_you calculado no servidor — client_id nunca sai daqui.
 CREATE OR REPLACE FUNCTION league_leaderboard(p_code text, p_from text, p_to text, p_client uuid)
 RETURNS json
 LANGUAGE sql
@@ -160,18 +284,61 @@ STABLE
 SET search_path = public
 AS $$
   SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (
-    SELECT m.display_name,
+    SELECT COALESCE(p.display_name, m.display_name) AS display_name,
+           p.handle,
            (m.client_id = p_client) AS is_you,
            COALESCE(SUM(r.composite), 0) AS pts,
            COUNT(r.id) AS days
     FROM league_members m
+    LEFT JOIN profiles p
+      ON p.client_id = m.client_id
     LEFT JOIN daily_results r
       ON r.client_id = m.client_id
      AND r.day_key BETWEEN p_from AND p_to
     WHERE m.group_code = upper(p_code)
-    GROUP BY m.client_id, m.display_name
-    ORDER BY pts DESC, days DESC, m.display_name
+    GROUP BY m.client_id, p.display_name, p.handle, m.display_name
+    ORDER BY pts DESC, days DESC, display_name
   ) t;
 $$;
 
 GRANT EXECUTE ON FUNCTION league_leaderboard TO anon, authenticated;
+
+-- sair do grupo: cada um só consegue remover a própria linha
+-- (exige conhecer o próprio client_id — o segredo do device)
+CREATE OR REPLACE FUNCTION league_leave(p_code text, p_client uuid)
+RETURNS json
+LANGUAGE sql
+SECURITY DEFINER
+VOLATILE
+SET search_path = public
+AS $$
+  WITH del AS (
+    DELETE FROM league_members
+    WHERE group_code = upper(p_code) AND client_id = p_client
+    RETURNING 1
+  )
+  SELECT json_build_object('ok', count(*) > 0) FROM del;
+$$;
+
+GRANT EXECUTE ON FUNCTION league_leave TO anon, authenticated;
+
+-- lista os grupos de que o jogador participa (suporta a UI
+-- de múltiplas ligas no futuro)
+CREATE OR REPLACE FUNCTION league_my_groups(p_client uuid)
+RETURNS json
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (
+    SELECT g.code, g.name,
+           (SELECT count(*) FROM league_members x WHERE x.group_code = g.code) AS members
+    FROM league_members m
+    JOIN league_groups g ON g.code = m.group_code
+    WHERE m.client_id = p_client
+    ORDER BY m.joined_at DESC
+  ) t;
+$$;
+
+GRANT EXECUTE ON FUNCTION league_my_groups TO anon, authenticated;

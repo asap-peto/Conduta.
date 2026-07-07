@@ -31,9 +31,9 @@ function showView(name) {
 
 /* ── NAV INFERIOR (pílula flutuante) ───────────────────────── */
 var NAV_TABS = [
-  { id: 'home',    label: 'Home',    icon: 'hospital' },
-  { id: 'arquivo', label: 'Arquivo', icon: 'book' },
-  { id: 'liga',    label: 'Liga',    icon: 'trophy' },
+  { id: 'home',    label: 'Home',    custom: 'home' },
+  { id: 'arquivo', label: 'Arquivo', custom: 'arquivo' },
+  { id: 'liga',    label: 'Liga',    custom: 'liga' },
   { id: 'perfil',  label: 'Perfil',  icon: 'user' }
 ];
 
@@ -43,8 +43,11 @@ function renderBottomNav() {
   var active = (typeof currentTab !== 'undefined') ? currentTab : 'home';
   nav.innerHTML = '<div class="nav-pill">' +
     NAV_TABS.map(function (t) {
+      var glyph = t.custom
+        ? '<span class="nav-ic nav-ic-' + t.custom + '"></span>'
+        : icon(t.icon, 19);
       return '<button class="nav-item' + (t.id === active ? ' active' : '') + '" onclick="showTab(\'' + t.id + '\')">' +
-        icon(t.icon, 19) + '<span>' + t.label + '</span></button>';
+        glyph + '<span>' + t.label + '</span></button>';
     }).join('') +
     '</div>';
 }
@@ -160,13 +163,33 @@ function renderHome() {
       streakBadge +
     '</div>';
 
+  /* faixa de stats: últimos 7 dias + XP + recorde (dá sinal ao painel) */
+  var week = (typeof lastSevenDays === 'function') ? lastSevenDays() : [];
+  var weekDots = week.map(function (d) {
+    var cls = d.played ? ('day-' + d.seal) : (d.isToday ? 'day-today' : 'day-empty');
+    return '<span class="week-dot ' + cls + '"></span>';
+  }).join('');
+  var statsStrip =
+    '<div class="home-stats">' +
+      '<div class="week-strip">' +
+        '<span class="week-label">Últimos 7 dias</span>' +
+        '<div class="week-dots">' + weekDots + '</div>' +
+      '</div>' +
+      '<div class="quick-stats">' +
+        '<span class="qstat">⚡ <b>' + (player.xp || 0) + '</b> XP</span>' +
+        '<span class="qstat">🏅 <b>' + (player.bestStreak || 0) + '</b> recorde</span>' +
+      '</div>' +
+    '</div>';
+
   if (!c) {
-    el.innerHTML = '<div class="home-wrap">' + greetCard +
-      '<div class="home-focus">' +
-        '<div class="home-date">' + homeDateLabel() + '</div>' +
-        '<div class="patient-card"><div class="patient-kicker">Sem caso hoje</div>' +
-        '<div class="patient-name">Volte amanhã 🌙</div></div>' +
-      '</div></div>';
+    el.innerHTML = '<div class="home-wrap">' +
+        '<div class="home-header">' + greetCard + statsStrip + '</div>' +
+        '<div class="home-play">' +
+          '<div class="home-date">' + homeDateLabel() + '</div>' +
+          '<div class="patient-card"><div class="patient-kicker">Sem caso hoje</div>' +
+          '<div class="patient-name">Volte amanhã 🌙</div></div>' +
+        '</div>' +
+      '</div>';
     showView('home');
     return;
   }
@@ -208,8 +231,8 @@ function renderHome() {
 
   el.innerHTML =
     '<div class="home-wrap">' +
-      greetCard +
-      '<div class="home-focus">' +
+      '<div class="home-header">' + greetCard + statsStrip + '</div>' +
+      '<div class="home-play">' +
         '<div class="home-date">' + homeDateLabel() + '</div>' +
         '<div class="patient-card">' + patientHead + patientBody + '</div>' +
       '</div>' +
