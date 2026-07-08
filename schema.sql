@@ -237,6 +237,19 @@ CREATE TABLE IF NOT EXISTS league_members (
   PRIMARY KEY (group_code, client_id)
 );
 
+-- AUTO-CURA: se as tabelas foram criadas por uma versão anterior sem
+-- alguma coluna, CREATE TABLE IF NOT EXISTS não as adiciona. Estes
+-- ALTERs garantem as colunas (não-destrutivo; seguro de re-rodar).
+ALTER TABLE league_groups  ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE league_groups  ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+ALTER TABLE league_members ADD COLUMN IF NOT EXISTS group_code   text;
+ALTER TABLE league_members ADD COLUMN IF NOT EXISTS client_id    uuid;
+ALTER TABLE league_members ADD COLUMN IF NOT EXISTS display_name text;
+ALTER TABLE league_members ADD COLUMN IF NOT EXISTS joined_at    timestamptz DEFAULT now();
+-- garante a unicidade (grupo, membro) mesmo se o PK antigo diferir
+CREATE UNIQUE INDEX IF NOT EXISTS uq_league_members_group_client
+  ON league_members (group_code, client_id);
+
 ALTER TABLE league_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE league_members ENABLE ROW LEVEL SECURITY;
 

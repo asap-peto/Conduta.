@@ -139,3 +139,4 @@ ela alcança:
 | Magic link leva pra página errada | URL Configuration | seção 2.3 |
 | Erro `function league_leaderboard(text,text,text) does not exist` no console | app novo + SQL antigo | rodar `schema.sql` (a assinatura nova tem `p_client`) |
 | "esse handle já está em uso" | handle é único global | escolher outro handle (3–20 caracteres: a–z, 0–9, _) |
+| Erro ao rodar o SQL: `column m.group_code does not exist` (ou coluna parecida em `league_*`) | tabela de liga criada por uma versão anterior, sem as colunas novas (o `CREATE TABLE IF NOT EXISTS` não altera tabela existente) | rodar de novo o `schema.sql` atual — ele tem `ALTER TABLE … ADD COLUMN IF NOT EXISTS` que auto-cura. Se preferir estrutura limpa (dados de liga são só de teste), rode antes: `DROP TABLE IF EXISTS league_members CASCADE; DROP TABLE IF EXISTS league_groups CASCADE;` e depois o `schema.sql` inteiro |
