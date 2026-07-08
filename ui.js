@@ -123,6 +123,7 @@ function renderOnboarding() {
         '<span>' + sealDot('y') + ' dá pra melhorar</span>' +
         '<span>' + sealDot('r') + ' cuidado</span>' +
       '</div>' +
+      '<label class="ob-check"><input type="checkbox" id="ob-dontshow" checked> Não mostrar essa explicação de novo</label>' +
       '<button class="btn-primary" onclick="completeOnboarding()">Começar o plantão</button>' +
       '<p class="ob-note">Sem cadastro. O caso é o mesmo pra todo mundo hoje.</p>' +
     '</div>';

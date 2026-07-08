@@ -72,6 +72,13 @@ async function maybeReloadPlayerFromStorage() {
   daily = (await loadProgress(KEY_DAILY)) || {};
   session = (await loadProgress(KEY_SESSION)) || null;
   if (session && session.dayKey !== dayKey()) session = null;
+  // restaura o gate do onboarding do servidor pro localStorage
+  // (num aparelho novo logado, evita re-mostrar a explicação)
+  var onb = await loadProgress(KEY_ONBOARD);
+  if (onb) {
+    onboardingSeenSession = true;
+    try { localStorage.setItem(KEY_ONBOARD, JSON.stringify(true)); } catch (e) {}
+  }
 }
 
 function playedToday() { return !!(daily && daily[dayKey()]); }
@@ -79,10 +86,11 @@ function hasOpenSession() { return !!(session && session.dayKey === dayKey()); }
 
 /* ── ROTEAMENTO / ABAS ─────────────────────────────────────── */
 var currentTab = 'home'; // 'home' | 'arquivo' | 'liga' | 'perfil'
+var onboardingSeenSession = false; // deixa avançar mesmo sem salvar a flag
 
 function renderApp() {
   renderHeaderStats();
-  if (!loadProgressSync(KEY_ONBOARD)) { renderOnboarding(); return; }
+  if (!onboardingSeenSession && !loadProgressSync(KEY_ONBOARD)) { renderOnboarding(); return; }
   if (hasOpenSession()) { renderCase(); return; }
   showTab(currentTab);
 }
@@ -105,7 +113,11 @@ function goHome() {
 }
 
 function completeOnboarding() {
-  saveProgress(KEY_ONBOARD, true);
+  onboardingSeenSession = true; // não reaparece nesta sessão
+  var chk = document.getElementById('ob-dontshow');
+  var dontShow = chk ? chk.checked : true;
+  // salva permanentemente (localStorage + Supabase se logado) só se marcado
+  if (dontShow) saveProgress(KEY_ONBOARD, true);
   renderApp();
 }
 

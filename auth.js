@@ -8,7 +8,6 @@
 /* ── CONFIGURAÇÃO DO SUPABASE ──────────────────────────────── */
 var SUPABASE_URL      = 'https://mxsraulcvabarpaxealh.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14c3JhdWxjdmFiYXJwYXhlYWxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTQ0ODQsImV4cCI6MjA5MDU3MDQ4NH0.UTkENx_TFnNXxjOV-jF03JYziliQcZyQmk5Cd1iEh3I';
-var APP_BASE_URL      = window.CONDUTA_APP_URL || 'https://conduta.cc/';
 
 // Inicializa cliente — protege contra CDN não carregado
 try {
@@ -19,90 +18,13 @@ try {
   _supabase = null;
 }
 
-function authRedirectUrl() {
-  if (window.location.protocol === 'https:' || window.location.protocol === 'http:') {
-    return window.location.origin + window.location.pathname;
-  }
-  return APP_BASE_URL;
-}
-
-function authCanRunHere() {
-  return window.location.protocol === 'https:' ||
-    (window.location.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(window.location.hostname));
-}
-
-function applyLoggedOutState() {
-  currentUser = null;
-
-  if (typeof setPlayer === 'function') {
-    setPlayer(loadProgressSync('conduta_player_v2'));
-    if (typeof hasVisitedConduta === 'function' && hasVisitedConduta() && typeof player !== 'undefined' && !player.onboarded) {
-      player.onboarded = true;
-    }
-    if (typeof syncLeagueWeek === 'function') syncLeagueWeek();
-    if (typeof refreshHearts === 'function') refreshHearts();
-  }
-
-  updateAuthUI();
-  setAuthStatus('', '');
-
-  if (typeof player !== 'undefined') {
-    if (player.onboarded && typeof goHome === 'function') {
-      goHome();
-    } else if (typeof showView === 'function' && typeof renderOnboarding === 'function') {
-      showView('onboarding');
-      renderOnboarding();
-    }
-  }
-}
-
-function setAuthStatus(message, tone) {
-  const el = document.getElementById('auth-status');
-  if (!el) return;
-  if (!message) {
-    el.style.display = 'none';
-    el.textContent = '';
-    el.className = 'auth-status';
-    return;
-  }
-  el.style.display = 'block';
-  el.textContent = message;
-  el.className = 'auth-status' + (tone ? ' ' + tone : '');
-}
-
-function setAuthButtonsDisabled(disabled) {
-  const ids = ['lg-submit', 'login-submit-btn'];
-  ids.forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.disabled = !!disabled;
-  });
-  const googleBtn = document.querySelector('.btn-google');
-  if (googleBtn) googleBtn.disabled = !!disabled;
-}
-
-function refreshAuthModalState() {
-  if (!authCanRunHere()) {
-    setAuthButtonsDisabled(true);
-    setAuthStatus('Login funciona no app publicado em https ou em localhost. Evite usar file:// para autenticação.', 'warn');
-    return;
-  }
-  if (!_supabase) {
-    setAuthButtonsDisabled(true);
-    setAuthStatus('Login indisponível no momento. Recarregue a página e tente novamente.', 'warn');
-    return;
-  }
-  setAuthButtonsDisabled(false);
-  setAuthStatus('', '');
-}
-
 /* ── GOOGLE OAUTH ──────────────────────────────────────────── */
 async function loginWithGoogle() {
-  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para entrar.'); return; }
   if (!_supabase) { toast('Erro de conexão.'); return; }
   try {
     const { error } = await _supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: authRedirectUrl() }
+      options: { redirectTo: window.location.origin + window.location.pathname }
     });
     if (error) toast('Erro ao iniciar login com Google.');
   } catch (e) {
@@ -112,7 +34,6 @@ async function loginWithGoogle() {
 
 /* ── EMAIL + SENHA ─────────────────────────────────────────── */
 async function loginEmailPassword(email, password) {
-  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para entrar.'); return false; }
   if (!_supabase) { toast('Erro de conexão.'); return false; }
   const { error } = await _supabase.auth.signInWithPassword({ email, password });
   if (error) {
@@ -124,12 +45,11 @@ async function loginEmailPassword(email, password) {
 }
 
 async function signupEmailPassword(email, password) {
-  if (!authCanRunHere()) { toast('Abra o app em https ou localhost para criar conta.'); return false; }
   if (!_supabase) { toast('Erro de conexão.'); return false; }
   const { data, error } = await _supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: authRedirectUrl() }
+    options: { emailRedirectTo: window.location.origin + window.location.pathname }
   });
   if (error) { toast(error.message); return false; }
   if (data?.session) { toast('Conta criada!'); return true; }
@@ -139,10 +59,6 @@ async function signupEmailPassword(email, password) {
 
 /* ── ENVIAR MAGIC LINK ─────────────────────────────────────── */
 async function sendMagicLink(email) {
-  if (!authCanRunHere()) {
-    toast('Abra o app em https ou localhost para receber magic link.');
-    return false;
-  }
   if (!_supabase) {
     toast('Erro de conexão. Tente novamente mais tarde.');
     return false;
@@ -152,7 +68,7 @@ async function sendMagicLink(email) {
     var res = await _supabase.auth.signInWithOtp({
       email: email,
       options: {
-        emailRedirectTo: authRedirectUrl()
+        emailRedirectTo: window.location.origin + window.location.pathname
       }
     });
 
@@ -171,11 +87,14 @@ async function sendMagicLink(email) {
 
 /* ── LOGOUT ────────────────────────────────────────────────── */
 async function logout() {
+  if (!_supabase) return;
+
   try {
-    if (_supabase) await _supabase.auth.signOut();
+    await _supabase.auth.signOut();
   } catch (e) {}
 
-  applyLoggedOutState();
+  currentUser = null;
+  updateAuthUI();
   toast('Você saiu da conta.');
 }
 
@@ -195,15 +114,13 @@ async function migrateLocalToSupabase(user) {
 
   if (keysToMigrate.length === 0) return;
 
-  var migratedKeys = [];
-
   // Upsert cada chave no Supabase
   for (var j = 0; j < keysToMigrate.length; j++) {
     var key = keysToMigrate[j];
     try {
       var data = JSON.parse(localStorage.getItem(key));
       if (data !== null) {
-        var res = await _supabase
+        await _supabase
           .from('user_progress')
           .upsert({
             user_id:    user.id,
@@ -211,17 +128,18 @@ async function migrateLocalToSupabase(user) {
             data:       data,
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id,key' });
-        if (res && res.error) throw res.error;
-        migratedKeys.push(key);
       }
     } catch (e) {
       // Falha silenciosa — continua com o próximo
     }
   }
 
-  // Limpa somente o que entrou no Supabase com sucesso.
-  for (var m = migratedKeys.length - 1; m >= 0; m--) {
-    localStorage.removeItem(migratedKeys[m]);
+  // Limpa localStorage — mas mantém flags que o boot lê de forma
+  // síncrona (o gate do onboarding vem do localStorage no arranque)
+  var keepLocal = { 'conduta_visited': 1, 'conduta_onboarded_v1': 1 };
+  for (var m = keysToMigrate.length - 1; m >= 0; m--) {
+    if (keepLocal[keysToMigrate[m]]) continue;
+    localStorage.removeItem(keysToMigrate[m]);
   }
 }
 
@@ -231,60 +149,6 @@ function updateAuthUI() {
   if (typeof renderHeaderStats === 'function') {
     try { renderHeaderStats(); } catch (e) {}
   }
-}
-
-async function hydrateExistingSession() {
-  if (!_supabase || !authCanRunHere()) return;
-
-  try {
-    const { data, error } = await _supabase.auth.getSession();
-    if (error) return;
-
-    const session = data && data.session;
-    if (session && session.user) {
-      currentUser = session.user;
-    } else {
-      currentUser = null;
-    }
-  } catch (e) {
-    // Se falhar, o app segue com o estado local.
-  }
-}
-
-var authBootstrapPromise = null;
-function withAuthTimeout(promise, ms) {
-  return new Promise(resolve => {
-    var done = false;
-    var timer = setTimeout(function() {
-      if (done) return;
-      done = true;
-      resolve(null);
-    }, ms);
-
-    Promise.resolve(promise)
-      .then(function(value) {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch(function() {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve(null);
-      });
-  });
-}
-
-function startAuthBootstrap() {
-  if (authBootstrapPromise) return authBootstrapPromise;
-  authBootstrapPromise = (async function() {
-    refreshAuthModalState();
-    initAuth();
-    await withAuthTimeout(hydrateExistingSession(), 1200);
-  })();
-  return authBootstrapPromise;
 }
 
 /* ── LISTENER DE MUDANÇA DE AUTH ───────────────────────────── */
@@ -306,25 +170,9 @@ function initAuth() {
 
       updateAuthUI();
       closeModal('login');
-      setAuthStatus('', '');
-
-      // Preload do hub de ligas — fire-and-forget, em paralelo com o
-      // resto da renderização. Quando o usuário toca a aba "Liga", os
-      // dados já estão prontos (ou em vôo) em vez de só começar agora.
-      if (typeof loadLeagueHub === 'function') {
-        try { loadLeagueHub(); } catch (_) {}
-      }
-
-      // Se havia um convite de liga aguardando login, retoma o fluxo agora.
-      if (isNewLogin && typeof processLeagueDeepLink === 'function') {
-        setTimeout(() => { try { processLeagueDeepLink(); } catch (_) {} }, 400);
-      }
     } else {
-      if (event === 'SIGNED_OUT') applyLoggedOutState();
-      else {
-        currentUser = null;
-        updateAuthUI();
-      }
+      currentUser = null;
+      updateAuthUI();
     }
   });
 }
@@ -348,14 +196,6 @@ function openLoginModal() {
     if (emailDisplay) emailDisplay.textContent = currentUser.email;
     openModal('account');
   } else {
-    setLoginMode('signin');
-    var emailInput = document.getElementById('lg-email');
-    var passwordInput = document.getElementById('lg-password');
-    var magicInput = document.getElementById('login-email');
-    if (emailInput) emailInput.value = '';
-    if (passwordInput) passwordInput.value = '';
-    if (magicInput) magicInput.value = '';
-    refreshAuthModalState();
     openModal('login');
   }
 }
@@ -397,11 +237,9 @@ function setLoginMode(mode) {
     el.style.display = el.dataset.loginMode === mode ? '' : 'none';
   });
   const title = document.getElementById('login-title');
-  const submit = document.getElementById('lg-submit');
   if (title) title.textContent =
     mode === 'signup' ? 'Criar conta' :
     mode === 'magic'  ? 'Entrar por magic link' : 'Entrar';
-  if (submit) submit.textContent = mode === 'signup' ? 'Criar conta' : 'Entrar';
 }
 
 async function handleEmailPasswordSubmit(e) {
@@ -431,13 +269,7 @@ window.loginWithGoogle = loginWithGoogle;
 window.loginEmailPassword = loginEmailPassword;
 window.signupEmailPassword = signupEmailPassword;
 window.handleEmailPasswordSubmit = handleEmailPasswordSubmit;
-window.handleLoginSubmit = handleLoginSubmit;
 window.setLoginMode = setLoginMode;
-window.openLoginModal = openLoginModal;
-window.logout = logout;
-window.startAuthBootstrap = startAuthBootstrap;
 
 // Inicializa auth quando DOM estiver pronto
-document.addEventListener('DOMContentLoaded', function() {
-  startAuthBootstrap();
-});
+document.addEventListener('DOMContentLoaded', initAuth);
