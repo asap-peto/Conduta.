@@ -89,13 +89,25 @@
     </div>
 
     <details data-login-mode="magic" style="display:none" open>
-      <summary style="display:none">Magic link</summary>
+      <summary style="display:none">Redefinir senha</summary>
       <form id="login-form" onsubmit="handleLoginSubmit(event)">
         <input type="email" id="login-email" class="text-input" placeholder="seu@email.com" autocomplete="email" required>
-        <button type="submit" id="login-submit-btn" class="btn-ghost">Enviar magic link</button>
+        <button type="submit" id="login-submit-btn" class="btn-ghost">Enviar link de redefinição</button>
       </form>
-      <p class="modal-fine">Receba um link no email pra entrar sem senha.</p>
+      <p class="modal-fine">Enviamos um link no seu email pra criar uma nova senha.</p>
     </details>
+  </div>
+</div>
+
+<!-- Modal de nova senha (após clicar no link de redefinição) -->
+<div class="modal-backdrop" id="modal-newpass" style="display:none">
+  <div class="modal-card">
+    <h2 class="modal-title">Defina uma nova senha</h2>
+    <p class="modal-desc">Escolha a senha que você vai usar pra entrar.</p>
+    <form onsubmit="submitNewPassword(event)">
+      <input type="password" id="np-password" class="text-input" placeholder="nova senha (mín. 6)" autocomplete="new-password" required>
+      <button type="submit" id="np-submit" class="btn-primary">Salvar nova senha</button>
+    </form>
   </div>
 </div>
 
@@ -115,7 +127,7 @@
 <!-- ══ SCRIPTS ═════════════════════════════════════════════ -->
 <script src="storage.js?v=8"></script>
 <script src="icons.js?v=8"></script>
-<script src="auth.js?v=23"></script>
+<script src="auth.js?v=25"></script>
 <script src="cases.js?v=18"></script>
 <script src="score.js?v=14"></script>
 <script src="share.js?v=8"></script>

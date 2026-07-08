@@ -85,6 +85,41 @@ async function sendMagicLink(email) {
   }
 }
 
+/* ── ESQUECI A SENHA (envia link de REDEFINIÇÃO) ───────────── */
+async function sendPasswordReset(email) {
+  if (!_supabase) { toast('Erro de conexão. Tente mais tarde.'); return false; }
+  try {
+    var res = await _supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+    if (res.error) { toast('Não foi possível enviar. Verifique o email.'); return false; }
+    toast('Enviamos um link pra redefinir sua senha!');
+    return true;
+  } catch (e) {
+    toast('Erro de conexão. Tente novamente.');
+    return false;
+  }
+}
+
+/* define a nova senha (após clicar no link do email — recovery) */
+async function submitNewPassword(e) {
+  if (e) e.preventDefault();
+  var inp = document.getElementById('np-password');
+  var pw = inp ? inp.value : '';
+  if (!pw || pw.length < 6) { toast('Senha com ao menos 6 caracteres.'); return; }
+  if (!_supabase) { toast('Erro de conexão.'); return; }
+  var btn = document.getElementById('np-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    var res = await _supabase.auth.updateUser({ password: pw });
+    if (res.error) { toast(res.error.message || 'Não deu pra salvar a senha.'); }
+    else { toast('Senha atualizada! Você já está logado.'); closeModal('newpass'); }
+  } catch (err) {
+    toast('Erro de conexão.');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Salvar nova senha'; }
+}
+
 /* ── LOGOUT ────────────────────────────────────────────────── */
 async function logout() {
   if (!_supabase) return;
@@ -156,6 +191,13 @@ function initAuth() {
   if (!_supabase) return;
 
   _supabase.auth.onAuthStateChange(async function(event, session) {
+    // chegou pelo link de redefinição → pede a nova senha
+    if (event === 'PASSWORD_RECOVERY') {
+      currentUser = session ? session.user : currentUser;
+      closeModal('login');
+      openModal('newpass');
+      return;
+    }
     if (session && session.user) {
       var isNewLogin = !currentUser;
       currentUser = session.user;
@@ -217,10 +259,10 @@ function handleLoginSubmit(e) {
     btn.textContent = 'Enviando...';
   }
 
-  sendMagicLink(email).then(function(success) {
+  sendPasswordReset(email).then(function(success) {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Entrar com magic link';
+      btn.textContent = 'Enviar link de redefinição';
     }
     if (success && input) {
       input.value = '';
@@ -239,7 +281,7 @@ function setLoginMode(mode) {
   const title = document.getElementById('login-title');
   if (title) title.textContent =
     mode === 'signup' ? 'Criar conta' :
-    mode === 'magic'  ? 'Entrar por magic link' : 'Entrar';
+    mode === 'magic'  ? 'Redefinir senha' : 'Entrar';
 }
 
 async function handleEmailPasswordSubmit(e) {
@@ -270,6 +312,8 @@ window.loginEmailPassword = loginEmailPassword;
 window.signupEmailPassword = signupEmailPassword;
 window.handleEmailPasswordSubmit = handleEmailPasswordSubmit;
 window.setLoginMode = setLoginMode;
+window.sendPasswordReset = sendPasswordReset;
+window.submitNewPassword = submitNewPassword;
 
 // Inicializa auth quando DOM estiver pronto
 document.addEventListener('DOMContentLoaded', initAuth);
