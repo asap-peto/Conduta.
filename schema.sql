@@ -246,6 +246,11 @@ ALTER TABLE league_members ADD COLUMN IF NOT EXISTS group_code   text;
 ALTER TABLE league_members ADD COLUMN IF NOT EXISTS client_id    uuid;
 ALTER TABLE league_members ADD COLUMN IF NOT EXISTS display_name text;
 ALTER TABLE league_members ADD COLUMN IF NOT EXISTS joined_at    timestamptz DEFAULT now();
+-- neutraliza colunas NOT NULL de um MODELO ANTIGO (ex.: league_id) que
+-- travam o insert do modelo atual (baseado em group_code). Removê-las é
+-- seguro: o app nunca as preenche.
+ALTER TABLE league_members DROP COLUMN IF EXISTS league_id;
+ALTER TABLE league_groups  DROP COLUMN IF EXISTS id;
 -- garante a unicidade (grupo, membro) mesmo se o PK antigo diferir
 CREATE UNIQUE INDEX IF NOT EXISTS uq_league_members_group_client
   ON league_members (group_code, client_id);
