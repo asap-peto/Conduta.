@@ -255,23 +255,44 @@ function renderProfile() {
   var el = $('view-profile');
   var name = getPlayerName();
   var initial = name.charAt(0).toUpperCase();
-  var loggedIn = (typeof currentUser !== 'undefined' && currentUser);
+  var loggedIn = isLoggedIn();
+  var username = getUsername();
 
-  var account = loggedIn
-    ? '<div class="account-card"><div class="account-line">Conta: <b>' + esc(currentUser.email || '') + '</b></div>' +
-        '<button class="btn-ghost" onclick="logout()">Sair da conta</button></div>'
-    : '<div class="account-card"><div class="account-line">Entre pra salvar seu streak e histórico em qualquer dispositivo.</div>' +
-        '<button class="btn-primary btn-slim" onclick="openLoginModal()">Entrar / criar conta</button></div>';
+  // identidade: @username (imutável, se houver) + display name editável
+  var idBlock =
+    (loggedIn && username ? '<div class="profile-username">@' + esc(username) + '</div>' : '') +
+    '<div class="profile-id" id="profile-id">' +
+      '<span class="profile-name">' + esc(name) + '</span>' +
+      '<button class="btn-link" onclick="uiEditName()">editar nome</button>' +
+    '</div>';
+
+  var account;
+  if (!loggedIn) {
+    account =
+      '<div class="account-card"><div class="account-line">Entre pra salvar seu progresso e participar de ligas.</div>' +
+      '<button class="btn-primary btn-slim" onclick="openLoginModal()">Entrar / criar conta</button></div>';
+  } else if (!username) {
+    account =
+      '<div class="account-card">' +
+        '<div class="account-line">Escolha seu <b>@username</b> — <b>definitivo</b> e único. É ele que aparece nas ligas.</div>' +
+        '<div class="league-actions">' +
+          '<input class="text-input" id="uname-input" maxlength="20" placeholder="username" autocapitalize="none" spellcheck="false" style="text-transform:lowercase">' +
+          '<button class="btn-primary btn-slim" onclick="uiCreateUsername()">Criar</button>' +
+        '</div>' +
+        '<div class="account-line" style="margin-top:12px">' + esc(currentUser.email || '') + ' · <button class="btn-link" onclick="logout()">sair</button></div>' +
+      '</div>';
+  } else {
+    account =
+      '<div class="account-card"><div class="account-line">Conta: <b>' + esc(currentUser.email || '') + '</b></div>' +
+      '<button class="btn-ghost" onclick="logout()">Sair da conta</button></div>';
+  }
 
   el.innerHTML =
     '<div class="tab-wrap">' +
       '<div class="tab-kicker">Perfil</div>' +
       '<div class="profile-head">' +
         '<div class="profile-avatar">' + esc(initial) + '</div>' +
-        '<div class="profile-id" id="profile-id">' +
-          '<div class="profile-name">' + esc(name) + '</div>' +
-          '<button class="btn-link" onclick="uiEditName()">editar nome</button>' +
-        '</div>' +
+        '<div class="profile-idwrap">' + idBlock + '</div>' +
       '</div>' +
       '<div class="stat-grid">' +
         statCard('⚡', player.xp || 0, 'XP total') +
@@ -306,6 +327,18 @@ function uiSaveName() {
   setPlayerName(inp ? inp.value : '');
   renderProfile();
   toast('Nome salvo!');
+}
+
+async function uiCreateUsername() {
+  var inp = $('uname-input');
+  var u = (inp ? inp.value : '').trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(u)) { toast('Username: 3–20 caracteres (a–z, 0–9, _).'); return; }
+  toast('Criando…');
+  var res = await createProfile(u, getPlayerName());
+  if (res.error) { toast('Não deu: ' + res.error); return; }
+  applyProfile(res.username, res.display_name);
+  renderProfile();
+  toast('Username @' + res.username + ' criado!');
 }
 
 /* ── ARQUIVO ───────────────────────────────────────────────── */
@@ -344,107 +377,204 @@ function renderArchive() {
   showView('archive');
 }
 
-/* ── LIGA ──────────────────────────────────────────────────── */
+/* ── LIGA (por conta, com admin) ───────────────────────────── */
+var currentLeague = null;   // liga aberta no detalhe (ou null = hub)
+var _myLeaguesCache = [];
+
 function renderLeague() {
   var el = $('view-league');
-  var code = getGroupCode();
 
-  if (!code) {
+  // exige conta
+  if (!isLoggedIn()) {
     el.innerHTML =
       '<div class="tab-wrap">' +
         '<div class="tab-kicker">Liga</div>' +
         '<h1 class="tab-title">Jogue contra<br>quem você conhece.</h1>' +
-        '<p class="tab-sub">Crie um grupo com sua turma ou entre com um código de convite. O ranking soma a pontuação dos casos da semana.</p>' +
-        '<div class="league-form card-dark">' +
-          '<label class="fld-label" for="lg-name">Seu nome no ranking</label>' +
-          '<input class="text-input" id="lg-name" maxlength="24" placeholder="ex.: João (T4)" value="' + esc(getDisplayName() || (hasCustomName() ? getPlayerName() : '')) + '">' +
-          '<div class="league-actions">' +
-            '<input class="text-input" id="lg-code" maxlength="6" placeholder="CÓDIGO" style="text-transform:uppercase">' +
-            '<button class="btn-ghost" onclick="uiJoinGroup()">Entrar</button>' +
-          '</div>' +
-          '<div class="login-divider"><span>ou</span></div>' +
-          '<div class="league-actions">' +
-            '<input class="text-input" id="lg-group-name" maxlength="40" placeholder="Nome do grupo (ex.: Turma 74)">' +
-            '<button class="btn-primary btn-slim" onclick="uiCreateGroup()">Criar</button>' +
-          '</div>' +
+        '<p class="tab-sub">As ligas comparam sua pontuação da semana com a turma.</p>' +
+        '<div class="empty-card">Você precisa de uma conta pra criar ou participar de ligas.' +
+          '<div style="height:14px"></div>' +
+          '<button class="btn-primary btn-slim" onclick="openLoginModal()">Entrar / criar conta</button>' +
         '</div>' +
       '</div>';
     showView('league');
     return;
   }
+  // exige username
+  if (!getUsername()) {
+    el.innerHTML =
+      '<div class="tab-wrap">' +
+        '<div class="tab-kicker">Liga</div>' +
+        '<h1 class="tab-title">Falta seu username.</h1>' +
+        '<p class="tab-sub">Nas ligas você aparece pelo seu @username. Crie o seu no Perfil pra continuar.</p>' +
+        '<button class="btn-primary" onclick="showTab(\'perfil\')">Ir pro Perfil</button>' +
+      '</div>';
+    showView('league');
+    return;
+  }
+  // detalhe de uma liga
+  if (currentLeague) { renderLeagueDetail(); return; }
 
+  // HUB: minhas ligas + criar/entrar
   el.innerHTML =
     '<div class="tab-wrap">' +
-      '<div class="tab-kicker">Liga · semana atual</div>' +
-      '<h1 class="tab-title">' + esc(getGroupName() || 'Seu grupo') + '</h1>' +
-      '<div class="league-invite">' +
-        'Código: <b>' + esc(code) + '</b>' +
-        '<button class="btn-link" onclick="uiCopyInvite()">convidar amigos</button>' +
+      '<div class="tab-kicker">Liga</div>' +
+      '<h1 class="tab-title">Suas ligas</h1>' +
+      '<div id="my-leagues"><div class="league-loading">Carregando…</div></div>' +
+      '<div class="card-dark league-form">' +
+        '<label class="fld-label">Entrar por código</label>' +
+        '<div class="league-actions">' +
+          '<input class="text-input" id="lg-code" maxlength="6" placeholder="CÓDIGO" style="text-transform:uppercase" autocapitalize="characters">' +
+          '<button class="btn-ghost" onclick="uiJoinLeague()">Entrar</button>' +
+        '</div>' +
+        '<div class="login-divider"><span>ou</span></div>' +
+        '<label class="fld-label">Criar uma liga (você vira admin)</label>' +
+        '<div class="league-actions">' +
+          '<input class="text-input" id="lg-name" maxlength="40" placeholder="Nome (ex.: Turma 74)">' +
+          '<button class="btn-primary btn-slim" onclick="uiCreateLeague()">Criar</button>' +
+        '</div>' +
       '</div>' +
-      '<div id="league-board"><div class="league-loading">Carregando ranking…</div></div>' +
-      '<button class="btn-link league-leave" onclick="uiLeaveGroup()">Sair do grupo</button>' +
     '</div>';
   showView('league');
 
-  fetchLeagueLeaderboard().then(function (rows) {
+  myLeagues().then(function (list) {
+    var box = $('my-leagues');
+    if (!box) return;
+    if (!list) { box.innerHTML = '<div class="empty-card">Ligas indisponíveis agora.</div>'; return; }
+    _myLeaguesCache = list;
+    if (!list.length) { box.innerHTML = '<div class="empty-card">Você ainda não está em nenhuma liga — crie uma ou entre com um código.</div>'; return; }
+    box.innerHTML = list.map(function (l, i) {
+      var tag = l.is_owner ? ' <span class="lg-you-tag">dono</span>' : (l.role === 'admin' ? ' <span class="lg-you-tag">admin</span>' : '');
+      return '<button class="arch-item" onclick="uiOpenLeague(' + i + ')">' +
+        '<div class="arch-icon">🏆</div>' +
+        '<div class="arch-info">' +
+          '<div class="arch-title">' + esc(l.name) + tag + '</div>' +
+          '<div class="arch-sub">' + l.members + (l.members === 1 ? ' membro' : ' membros') + ' · ' + esc(l.code) + '</div>' +
+        '</div>' +
+        '<div class="arch-chev">' + icon('chevron', 18) + '</div>' +
+      '</button>';
+    }).join('');
+  });
+}
+
+function uiOpenLeague(i) { currentLeague = _myLeaguesCache[i]; renderLeagueDetail(); }
+function uiCloseLeague() { currentLeague = null; renderLeague(); }
+
+function renderLeagueDetail() {
+  var l = currentLeague;
+  var el = $('view-league');
+  var isAdmin = l.role === 'admin' || l.is_owner;
+
+  el.innerHTML =
+    '<div class="tab-wrap">' +
+      '<button class="back-btn" onclick="uiCloseLeague()">' + icon('back', 18) + ' Ligas</button>' +
+      '<div class="tab-kicker">Liga · semana atual</div>' +
+      '<h1 class="tab-title">' + esc(l.name) + '</h1>' +
+      '<div class="league-invite">Código: <b>' + esc(l.code) + '</b>' +
+        '<button class="btn-link" onclick="uiCopyInvite()">convidar</button></div>' +
+      '<div id="league-board"><div class="league-loading">Carregando ranking…</div></div>' +
+      (isAdmin ? '<div class="debrief-h">Membros (admin)</div><div id="league-admin"><div class="league-loading">…</div></div>' : '') +
+      '<div class="league-foot">' +
+        (isAdmin ? '<button class="btn-link" onclick="uiRenameLeague()">renomear</button> · ' : '') +
+        (l.is_owner
+          ? '<button class="btn-link danger" onclick="uiDeleteLeague()">excluir liga</button>'
+          : '<button class="btn-link" onclick="uiLeaveLeague()">sair da liga</button>') +
+      '</div>' +
+    '</div>';
+  showView('league');
+
+  leagueLeaderboard(l.id).then(function (rows) {
     var board = $('league-board');
     if (!board) return;
-    if (!rows) {
-      board.innerHTML = '<div class="empty-card">Ranking indisponível agora. Verifique a conexão e tente de novo.</div>';
-      return;
-    }
-    if (!rows.length) {
-      board.innerHTML = '<div class="empty-card">Ninguém pontuou ainda esta semana. Joguem o caso de hoje!</div>';
-      return;
-    }
+    if (!rows) { board.innerHTML = '<div class="empty-card">Ranking indisponível agora.</div>'; return; }
+    if (!rows.length) { board.innerHTML = '<div class="empty-card">Ninguém pontuou ainda esta semana. Joguem o caso de hoje!</div>'; return; }
     board.innerHTML = rows.map(function (r, i) {
       return '<div class="lg-row' + (r.is_you ? ' you' : '') + '">' +
         '<div class="lg-rank">' + (i + 1) + '</div>' +
-        '<div class="lg-name">' + esc(r.display_name) + (r.is_you ? ' <span class="lg-you-tag">você</span>' : '') + '</div>' +
+        '<div class="lg-name">' + esc(r.display_name) + ' <span class="lg-handle">@' + esc(r.username) + '</span>' + (r.is_you ? ' <span class="lg-you-tag">você</span>' : '') + '</div>' +
         '<div class="lg-days">' + r.days + (r.days === 1 ? ' caso' : ' casos') + '</div>' +
         '<div class="lg-pts">' + r.pts + ' pts</div>' +
       '</div>';
     }).join('');
   });
+
+  if (isAdmin) {
+    leagueMembers(l.id).then(function (members) {
+      var box = $('league-admin');
+      if (!box) return;
+      if (!members || !members.length) { box.innerHTML = '<div class="empty-card">—</div>'; return; }
+      box.innerHTML = members.map(function (m) {
+        var canRemove = !m.is_you && m.role !== 'admin';
+        return '<div class="mem-row">' +
+          '<span class="mem-name">' + esc(m.display_name) + ' <span class="lg-handle">@' + esc(m.username) + '</span>' + (m.role === 'admin' ? ' <span class="lg-you-tag">admin</span>' : '') + '</span>' +
+          (canRemove ? '<button class="btn-link danger" onclick="uiRemoveMember(\'' + m.member_id + '\')">remover</button>' : '') +
+        '</div>';
+      }).join('');
+    });
+  }
 }
 
-async function uiCreateGroup() {
+async function uiCreateLeague() {
   var name = ($('lg-name').value || '').trim();
-  var groupName = ($('lg-group-name').value || '').trim();
-  if (!name) { toast('Diga seu nome pro ranking.'); return; }
-  if (!groupName) { toast('Dê um nome pro grupo.'); return; }
-  toast('Criando grupo…');
-  var res = await createLeagueGroup(groupName, name);
+  if (!name) { toast('Dê um nome à liga.'); return; }
+  toast('Criando…');
+  var res = await createLeague(name);
   if (res.error) { toast('Não deu: ' + res.error); return; }
-  toast('Grupo criado! Código ' + res.code);
-  renderLeague();
+  toast('Liga criada! Código ' + res.code);
+  currentLeague = { id: res.id, name: res.name, code: res.code, role: 'admin', is_owner: true, members: 1 };
+  renderLeagueDetail();
 }
 
-async function uiJoinGroup() {
-  var name = ($('lg-name').value || '').trim();
+async function uiJoinLeague() {
   var code = ($('lg-code').value || '').trim().toUpperCase();
-  if (!name) { toast('Diga seu nome pro ranking.'); return; }
-  if (code.length !== 6) { toast('Código tem 6 caracteres.'); return; }
+  if (code.length !== 6) { toast('O código tem 6 caracteres.'); return; }
   toast('Entrando…');
-  var res = await joinLeagueGroup(code, name);
+  var res = await joinLeague(code);
   if (res.error) { toast('Não deu: ' + res.error); return; }
   toast('Você entrou em ' + res.name + '!');
-  renderLeague();
-}
-
-function uiLeaveGroup() {
-  leaveLeagueGroup();
-  renderLeague();
+  currentLeague = { id: res.id, name: res.name, code: code, role: 'member', is_owner: false, members: 0 };
+  renderLeagueDetail();
 }
 
 async function uiCopyInvite() {
-  var text = 'Entra na minha liga no Conduta — um caso clínico por dia. Código: ' + getGroupCode() + ' · conduta.cc';
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Convite copiado!');
-  } catch (e) {
-    toast('Código: ' + getGroupCode());
-  }
+  if (!currentLeague) return;
+  var text = 'Entra na minha liga no Conduta — um caso clínico por dia. Código: ' + currentLeague.code + ' · conduta.cc';
+  try { await navigator.clipboard.writeText(text); toast('Convite copiado!'); }
+  catch (e) { toast('Código: ' + currentLeague.code); }
+}
+
+async function uiLeaveLeague() {
+  if (!currentLeague) return;
+  var ok = await leaveLeague(currentLeague.id);
+  toast(ok ? 'Você saiu da liga.' : 'Não deu pra sair.');
+  currentLeague = null; renderLeague();
+}
+
+async function uiDeleteLeague() {
+  if (!currentLeague) return;
+  var ok = await deleteLeague(currentLeague.id);
+  toast(ok ? 'Liga excluída.' : 'Não deu pra excluir.');
+  currentLeague = null; renderLeague();
+}
+
+async function uiRenameLeague() {
+  if (!currentLeague) return;
+  var name = window.prompt('Novo nome da liga:', currentLeague.name);
+  if (name == null) return;
+  name = name.trim();
+  if (!name) return;
+  var res = await renameLeague(currentLeague.id, name);
+  if (res.error) { toast('Não deu: ' + res.error); return; }
+  currentLeague.name = res.name;
+  toast('Renomeada!');
+  renderLeagueDetail();
+}
+
+async function uiRemoveMember(memberId) {
+  if (!currentLeague) return;
+  var res = await removeMember(currentLeague.id, memberId);
+  if (res.error) { toast('Não deu: ' + res.error); return; }
+  toast('Membro removido.');
+  renderLeagueDetail();
 }
 
 /* ── TELA DO CASO ──────────────────────────────────────────── */
@@ -694,10 +824,16 @@ window.toast = toast;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.renderHeaderStats = renderHeaderStats;
-window.uiCreateGroup = uiCreateGroup;
-window.uiJoinGroup = uiJoinGroup;
-window.uiLeaveGroup = uiLeaveGroup;
-window.uiCopyInvite = uiCopyInvite;
 window.renderProfile = renderProfile;
 window.uiEditName = uiEditName;
 window.uiSaveName = uiSaveName;
+window.uiCreateUsername = uiCreateUsername;
+window.uiOpenLeague = uiOpenLeague;
+window.uiCloseLeague = uiCloseLeague;
+window.uiCreateLeague = uiCreateLeague;
+window.uiJoinLeague = uiJoinLeague;
+window.uiCopyInvite = uiCopyInvite;
+window.uiLeaveLeague = uiLeaveLeague;
+window.uiDeleteLeague = uiDeleteLeague;
+window.uiRenameLeague = uiRenameLeague;
+window.uiRemoveMember = uiRemoveMember;

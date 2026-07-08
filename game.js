@@ -39,21 +39,32 @@ function defaultPlayer() {
   return { streak: 0, bestStreak: 0, lastPlayedDay: null, freezesUsedMonth: 0, monthKey: null, xp: 0, name: null };
 }
 
-/* nome exibido na saudação (default "Estudante"); persiste no player */
+/* nome exibido na saudação (default "Estudante"); persiste no player.
+   Quando logado, é o display_name da conta. */
 function getPlayerName() {
   return (player && player.name) ? player.name : 'Estudante';
 }
+function getUsername() { return (player && player.username) ? player.username : null; }
+function isLoggedIn() { return typeof currentUser !== 'undefined' && !!currentUser; }
 function hasCustomName() { return !!(player && player.name); }
 function setPlayerName(name) {
   name = (name || '').trim().slice(0, 24);
   player.name = name || null;
   saveProgress(KEY_PLAYER, player);
-  // salva também na plataforma (perfil): nome editado propaga
-  // pro ranking da liga e sobrevive a troca de dispositivo
-  if (name && typeof syncProfileName === 'function') syncProfileName(name);
+  // logado: o display_name também vai pra conta (propaga p/ o ranking)
+  if (name && isLoggedIn() && typeof updateDisplayNameRemote === 'function') {
+    updateDisplayNameRemote(name);
+  }
   renderHeaderStats();
 }
 function playedCount() { return daily ? Object.keys(daily).length : 0; }
+/* aplica o perfil da conta (username imutável + display_name) no cache local */
+function applyProfile(username, displayName) {
+  if (username) player.username = username;
+  if (displayName) player.name = displayName;
+  saveProgress(KEY_PLAYER, player);
+  renderHeaderStats();
+}
 
 function loadStateSync() {
   player = loadProgressSync(KEY_PLAYER) || defaultPlayer();
@@ -78,6 +89,15 @@ async function maybeReloadPlayerFromStorage() {
   if (onb) {
     onboardingSeenSession = true;
     try { localStorage.setItem(KEY_ONBOARD, JSON.stringify(true)); } catch (e) {}
+  }
+  // perfil da conta: username (imutável) + display_name viram cache local
+  if (typeof getMyProfile === 'function') {
+    var prof = await getMyProfile();
+    if (prof && prof.username) {
+      player.username = prof.username;
+      if (prof.display_name) player.name = prof.display_name;
+      saveProgress(KEY_PLAYER, player);
+    }
   }
 }
 
@@ -421,8 +441,11 @@ window.showSavedResult = showSavedResult;
 window.archiveList = archiveList;
 window.lastSevenDays = lastSevenDays;
 window.getPlayerName = getPlayerName;
+window.getUsername = getUsername;
+window.isLoggedIn = isLoggedIn;
 window.hasCustomName = hasCustomName;
 window.setPlayerName = setPlayerName;
+window.applyProfile = applyProfile;
 window.playedCount = playedCount;
 window.quitCase = quitCase;
 window.selectOption = selectOption;
