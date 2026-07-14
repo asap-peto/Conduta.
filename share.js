@@ -18,9 +18,13 @@ function sealEmoji(s) {
    conduta.cc
    ──────────────────────────────────────────────────────── */
 function buildShareText(opts) {
-  // opts: { themeIcon, dayNumber, perDecision, seals, percentile, streak }
+  // opts: { themeIcon, dayNumber, perDecision, seals, dx, percentile, streak }
   var lines = [];
   lines.push('Conduta ' + opts.themeIcon + ' #' + opts.dayNumber);
+  if (opts.dx) {
+    var s = opts.dx.correct ? (opts.dx.attemptsUsed <= 1 ? 'g' : 'y') : 'r';
+    lines.push('🧠 ' + sealEmoji(s) + ' ' + (opts.dx.correct ? opts.dx.attemptsUsed : 'X') + '/' + (opts.dx.maxAttempts || 3));
+  }
   lines.push(opts.perDecision.map(sealEmoji).join('') + ' ⏱️' + sealEmoji(opts.seals.rap));
   lines.push(
     'Dx ' + sealEmoji(opts.seals.diag) +

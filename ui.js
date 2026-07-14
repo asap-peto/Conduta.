@@ -151,40 +151,39 @@ function renderHome() {
   var c = todaysCase();
   var streak = player.streak || 0;
 
-  /* card de saudação (sempre no topo) — streak como badge à direita */
-  var streakBadge = streak > 0
-    ? '<div class="streak-badge"><span class="flame">🔥</span><span class="streak-n">' + streak + '</span><span class="streak-cap">' + (streak === 1 ? 'dia' : 'dias') + '</span></div>'
-    : '<div class="streak-badge muted"><span class="flame">🔥</span><span class="streak-n">0</span><span class="streak-cap">dias</span></div>';
-  var greetCard =
-    '<div class="greet-card">' +
-      '<div class="greet-hello">' +
-        '<span class="greet-oi">Olá,</span>' +
-        '<span class="greet-name">' + esc(getPlayerName()) + ' <span class="wave">👋</span></span>' +
-      '</div>' +
-      streakBadge +
-    '</div>';
-
-  /* faixa de stats: últimos 7 dias + XP + recorde (dá sinal ao painel) */
+  /* card slim: saudação + métricas inline em cima, semana embaixo */
   var week = (typeof lastSevenDays === 'function') ? lastSevenDays() : [];
   var weekDots = week.map(function (d) {
     var cls = d.played ? ('day-' + d.seal) : (d.isToday ? 'day-today' : 'day-empty');
     return '<span class="week-dot ' + cls + '"></span>';
   }).join('');
-  var statsStrip =
-    '<div class="home-stats">' +
-      '<div class="week-strip">' +
-        '<span class="week-label">Últimos 7 dias</span>' +
-        '<div class="week-dots">' + weekDots + '</div>' +
+  var streakChip =
+    '<span class="metric metric-streak' + (streak > 0 ? '' : ' is-off') + '">' +
+      '<span class="flame">🔥</span>' +
+      '<b>' + streak + '</b>' +
+      '<span class="m-unit">' + (streak === 1 ? 'dia' : 'dias') + '</span>' +
+    '</span>';
+  var greetCard =
+    '<div class="greet-card">' +
+      '<div class="greet-top">' +
+        '<div class="greet-hello">' +
+          '<span class="greet-oi">Olá,</span>' +
+          '<span class="greet-name">' + esc(getPlayerName()) + ' <span class="wave">👋</span></span>' +
+        '</div>' +
+        streakChip +
       '</div>' +
-      '<div class="quick-stats">' +
-        '<span class="qstat">⚡ <b>' + (player.xp || 0) + '</b> XP</span>' +
-        '<span class="qstat">🏅 <b>' + (player.bestStreak || 0) + '</b> recorde</span>' +
+      '<div class="greet-week">' +
+        '<div class="greet-metrics">' +
+          '<span class="metric"><span class="m-ico">⚡</span><b>' + (player.xp || 0) + '</b><span class="m-unit">XP</span></span>' +
+          '<span class="metric"><span class="m-ico">🏅</span><b>' + (player.bestStreak || 0) + '</b><span class="m-unit">rec</span></span>' +
+        '</div>' +
+        '<div class="week-dots">' + weekDots + '</div>' +
       '</div>' +
     '</div>';
 
   if (!c) {
     el.innerHTML = '<div class="home-wrap">' +
-        '<div class="home-header">' + greetCard + statsStrip + '</div>' +
+        '<div class="home-header">' + greetCard + '</div>' +
         '<div class="home-play">' +
           '<div class="home-date">' + homeDateLabel() + '</div>' +
           '<div class="patient-card"><div class="patient-kicker">Sem caso hoje</div>' +
@@ -232,7 +231,7 @@ function renderHome() {
 
   el.innerHTML =
     '<div class="home-wrap">' +
-      '<div class="home-header">' + greetCard + statsStrip + '</div>' +
+      '<div class="home-header">' + greetCard + '</div>' +
       '<div class="home-play">' +
         '<div class="home-date">' + homeDateLabel() + '</div>' +
         '<div class="patient-card">' + patientHead + patientBody + '</div>' +
@@ -577,78 +576,161 @@ async function uiRemoveMember(memberId) {
   renderLeagueDetail();
 }
 
-/* ── TELA DO CASO ──────────────────────────────────────────── */
-/* Steps: intro(0) d1(1) reveal1(2) d2(3) reveal2(4) d3(5) */
-var DECISION_STEPS = { 1: 0, 3: 1, 5: 2 }; // step → índice da decisão
-var REVEAL_STEPS = { 2: 0, 4: 1 };         // step → índice do reveal
-
+/* ── TELA DO CASO (motor de stages) ────────────────────────── */
 function renderCase() {
   var el = $('view-case');
   var c = getCaseById(session.caseId);
-  var theme = THEMES[c.theme] || { icon: '🩺', label: '' };
-  var step = session.step;
+  var stages = c.stages;
+  var idx = session.stageIndex;
 
-  /* stepper: 4 segmentos = apresentação + 3 decisões */
-  var segIdx = step === 0 ? 0 : (DECISION_STEPS[step] !== undefined ? DECISION_STEPS[step] + 1 : REVEAL_STEPS[step] + 1);
-  var segs = '';
-  for (var i = 0; i < 4; i++) {
-    var cls = i < segIdx ? 'done' : i === segIdx ? 'current' : '';
-    segs += '<div class="step-seg ' + cls + '"></div>';
+  el.innerHTML = renderCaseTop(c, stages, idx) + renderStageBody(c, stages, idx);
+  showView('case');
+
+  var stage = idx >= 0 ? stages[idx] : null;
+  if (stage && stage.type === 'decision') startTimerUI(stage); else stopTimerUI();
+  if (stage && stage.type === 'diagnosis' && !session.stageAnswers[idx]) {
+    var di = $('dx-input'); if (di) di.focus();
   }
+}
 
-  var html =
-    '<div class="case-top">' +
-      '<button class="case-quit" onclick="quitCase()" aria-label="Sair">✕</button>' +
-      '<div class="stepper">' + segs + '</div>' +
-      '<div class="case-tag">' +
-        (session.practice ? '<span class="practice-tag">Treino</span> ' : '') +
-        theme.icon + '<span class="case-tag-label"> ' + esc(theme.label) + '</span>' +
-      '</div>' +
+/* topo: sair + stepper (só milestones, sem contar reveals) + tema */
+function renderCaseTop(c, stages, idx) {
+  var theme = THEMES[c.theme] || { icon: '🩺', label: '' };
+  var segs = '';
+  stages.forEach(function (s, i) {
+    if (s.type === 'reveal') return;
+    var cls = i < idx ? 'done' : i === idx ? 'current' : '';
+    segs += '<div class="step-seg ' + cls + '"></div>';
+  });
+  return '<div class="case-top">' +
+    '<button class="case-quit" onclick="quitCase()" aria-label="Sair">✕</button>' +
+    '<div class="stepper">' + segs + '</div>' +
+    '<div class="case-tag">' +
+      (session.practice ? '<span class="practice-tag">Treino</span> ' : '') +
+      theme.icon + '<span class="case-tag-label"> ' + esc(theme.label) + '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderStageBody(c, stages, idx) {
+  if (idx < 0) return renderPresentation(c);
+  var stage = stages[idx];
+  if (!stage) return '';
+  if (stage.type === 'diagnosis') return renderDiagnosisStage(c, stage, idx);
+  if (stage.type === 'decision')  return renderDecisionStage(c, stage, idx);
+  if (stage.type === 'reveal')    return renderRevealStage(c, stage, idx);
+  return '';
+}
+
+function renderPresentation(c) {
+  return '<div class="chart-paper">' +
+      '<div class="case-setting">' + esc(c.setting) + '</div>' +
+      '<p class="vignette">' + esc(c.presentation.vignette) + '</p>' +
+      (c.presentation.vitals ? '<div class="vitals">' + esc(c.presentation.vitals) + '</div>' : '') +
+    '</div>' +
+    '<button class="btn-primary" onclick="assumeCase()">Assumir o caso</button>';
+}
+
+/* diagnóstico digitado — input + autocomplete + pistas */
+function renderDiagnosisStage(c, stage, idx) {
+  var answered = session.stageAnswers[idx];
+  var head =
+    '<div class="chart-paper">' +
+      '<div class="case-setting">' + esc(c.setting) + '</div>' +
+      '<p class="vignette">' + esc(c.presentation.vignette) + '</p>' +
+      (c.presentation.vitals ? '<div class="vitals">' + esc(c.presentation.vitals) + '</div>' : '') +
     '</div>';
 
-  if (step === 0) {
-    /* apresentação — prontuário de papel */
-    html +=
-      '<div class="chart-paper">' +
-        '<div class="case-setting">' + esc(c.setting) + '</div>' +
-        '<p class="vignette">' + esc(c.presentation.vignette) + '</p>' +
-        (c.presentation.vitals ? '<div class="vitals">' + esc(c.presentation.vitals) + '</div>' : '') +
+  if (answered) {
+    var msg = answered.correct
+      ? (answered.attemptsUsed <= 1
+          ? '✔ Você reconheceu a hipótese de primeira.'
+          : '✔ Você chegou lá — em ' + answered.attemptsUsed + ' tentativa(s).')
+      : '✗ A principal hipótese era:';
+    return head +
+      '<div class="dx-result ' + (answered.correct ? 'ok' : 'miss') + '">' +
+        '<div class="dx-result-msg">' + msg + '</div>' +
+        '<div class="dx-result-answer">' + esc(stage.canonical) + '</div>' +
       '</div>' +
-      '<button class="btn-primary" onclick="advanceStep()">Assumir o caso</button>';
-  } else if (DECISION_STEPS[step] !== undefined) {
-    /* decisão */
-    var dIdx = DECISION_STEPS[step];
-    var d = c.decisions[dIdx];
-    var order = session.order[dIdx];
-    html += '<div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>';
-    html += '<div class="decision-prompt">' + esc(d.prompt) + '</div>';
-    html += '<div class="options">' +
+      '<button class="btn-primary" onclick="advanceStage()">Continuar</button>';
+  }
+
+  var attemptN = session.dxAttempts.length + 1;
+  var max = stage.maxAttempts || 3;
+  var hints = stage.hints || [];
+  var shown = Math.min(session.dxAttempts.length, hints.length);
+  var pistas = '';
+  for (var h = 0; h < shown; h++) {
+    pistas += '<div class="dx-hint">💡 ' + esc(hints[h]) + '</div>';
+  }
+  var partial = session.dxPartial
+    ? '<div class="dx-partial">Você reconheceu a síndrome — tente especificar melhor.</div>'
+    : '';
+
+  return head +
+    '<div class="dx-prompt">Qual é a principal hipótese diagnóstica?</div>' +
+    '<div class="dx-attempts">Tentativa ' + attemptN + ' de ' + max + '</div>' +
+    pistas +
+    partial +
+    '<div class="dx-field">' +
+      '<input class="text-input" id="dx-input" autocomplete="off" autocapitalize="none" spellcheck="false" ' +
+        'placeholder="Digite o diagnóstico…" oninput="uiDxInput()" onkeydown="uiDxKey(event)">' +
+      '<div class="dx-suggest" id="dx-suggest" style="display:none"></div>' +
+    '</div>' +
+    '<button class="btn-primary" onclick="uiSubmitDx()">Confirmar hipótese</button>';
+}
+
+/* decisão de múltipla escolha */
+function renderDecisionStage(c, stage, idx) {
+  var order = session.order[idx];
+  return '<div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>' +
+    '<div class="decision-prompt">' + esc(stage.prompt) + '</div>' +
+    '<div class="options">' +
       order.map(function (optIdx) {
         var sel = session.selected === optIdx ? ' selected' : '';
         return '<button class="option' + sel + '" data-opt="' + optIdx + '" onclick="selectOption(' + optIdx + ')">' +
-          esc(d.options[optIdx].text) + '</button>';
+          esc(stage.options[optIdx].text) + '</button>';
       }).join('') +
-      '</div>';
-    html += '<button class="btn-primary" id="btn-confirm" onclick="confirmDecision()"' +
+    '</div>' +
+    '<button class="btn-primary" id="btn-confirm" onclick="confirmDecision()"' +
       (session.selected == null ? ' disabled' : '') + '>Confirmar</button>';
-  } else {
-    /* revelação */
-    var rIdx = REVEAL_STEPS[step];
-    var r = c.reveals[rIdx];
-    html += '<div class="noted">Anotado. O plantão continua…</div>';
-    html +=
-      '<div class="reveal-card">' +
-        '<div class="reveal-kicker">Nova informação</div>' +
-        '<div class="reveal-title">' + esc(r.title) + '</div>' +
-        '<p class="reveal-body">' + esc(r.body) + '</p>' +
-      '</div>' +
-      '<button class="btn-primary" onclick="advanceStep()">Continuar</button>';
-  }
+}
 
-  el.innerHTML = html;
-  showView('case');
-  if (DECISION_STEPS[step] !== undefined) startTimerUI(c.decisions[DECISION_STEPS[step]]);
-  else stopTimerUI();
+/* revelação */
+function renderRevealStage(c, stage, idx) {
+  return '<div class="noted">Anotado. O plantão continua…</div>' +
+    '<div class="reveal-card">' +
+      '<div class="reveal-kicker">Nova informação</div>' +
+      '<div class="reveal-title">' + esc(stage.title) + '</div>' +
+      '<p class="reveal-body">' + esc(stage.body) + '</p>' +
+    '</div>' +
+    '<button class="btn-primary" onclick="advanceReveal()">Continuar</button>';
+}
+
+/* autocomplete do diagnóstico */
+var _dxSug = [];
+function uiDxInput() {
+  var inp = $('dx-input'); var box = $('dx-suggest');
+  if (!inp || !box) return;
+  _dxSug = (typeof searchDiagnoses === 'function') ? searchDiagnoses(inp.value) : [];
+  if (!_dxSug.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = _dxSug.map(function (d, i) {
+    return '<button type="button" class="dx-sug" onclick="uiPickDx(' + i + ')">' + esc(d) + '</button>';
+  }).join('');
+  box.style.display = '';
+}
+function uiPickDx(i) {
+  var inp = $('dx-input'); var box = $('dx-suggest');
+  if (inp && _dxSug[i] != null) inp.value = _dxSug[i];
+  if (box) box.style.display = 'none';
+  if (inp) inp.focus();
+}
+function uiDxKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); uiSubmitDx(); }
+}
+function uiSubmitDx() {
+  var inp = $('dx-input');
+  submitDiagnosis(inp ? inp.value : '');
 }
 
 /* timer visual — traço fino, muda de cor após o alvo */
@@ -659,7 +741,7 @@ function startTimerUI(decision) {
   var fill = $('timer-fill');
   if (!fill) return;
   function tick() {
-    var elapsed = Date.now() - session.stepStartedAt;
+    var elapsed = Date.now() - session.stageStartedAt;
     var pct = Math.min(100, (elapsed / target) * 100);
     fill.style.width = pct + '%';
     if (elapsed > target) fill.classList.add('over');
@@ -711,12 +793,22 @@ function renderResult(ctx) {
     scoreLines += '<div class="result-percentile muted" id="result-pct">Comparando com os plantões de hoje…</div>';
   }
 
-  /* gabarito por decisão */
-  var acc = c.decisions.map(function (d, i) {
-    var a = r.answers[i] || {};
-    var chosen = d.options[a.optionIdx];
-    var best = d.options.filter(function (o) { return o.quality === 'best'; })[0];
-    var seal = r.perDecision[i];
+  /* linha da hipótese diagnóstica (quando houve etapa) */
+  var hypoBlock = '';
+  if (r.dx) {
+    var hSeal = r.dx.correct ? (r.dx.attemptsUsed <= 1 ? 'g' : 'y') : 'r';
+    var hMsg = r.dx.correct
+      ? (r.dx.attemptsUsed <= 1 ? 'Reconheceu na 1ª tentativa' : 'Acertou em ' + r.dx.attemptsUsed + ' tentativas')
+      : 'Não reconheceu (' + esc(c.diagnosis) + ')';
+    hypoBlock =
+      '<div class="skill-line">' + sealDot(hSeal) +
+        '<span class="skill-label">Hipótese diagnóstica</span>' +
+        '<span class="skill-val">' + hMsg + '</span></div>';
+  }
+
+  /* gabarito por decisão (a partir dos stages) */
+  var acc = (r.decisions || []).map(function (d, i) {
+    var chosen = d.chosen, best = d.best, seal = d.seal;
     var body =
       '<span class="you"><span class="lbl">Você:</span> ' + esc(chosen ? chosen.text : '—') + '</span>' +
       (chosen && chosen.feedback ? '<span class="you">' + esc(chosen.feedback) + '</span>' : '') +
@@ -765,6 +857,7 @@ function renderResult(ctx) {
         '<div class="result-dx-name">' + esc(c.diagnosis) + '</div>' +
         scoreLines +
       '</div>' +
+      (hypoBlock ? '<div class="skill-block">' + hypoBlock + '</div>' : '') +
       '<div class="result-actions">' + actions + '</div>' +
       '<div class="debrief-h">Gabarito comentado</div>' +
       acc +
@@ -828,6 +921,10 @@ window.renderProfile = renderProfile;
 window.uiEditName = uiEditName;
 window.uiSaveName = uiSaveName;
 window.uiCreateUsername = uiCreateUsername;
+window.uiDxInput = uiDxInput;
+window.uiPickDx = uiPickDx;
+window.uiDxKey = uiDxKey;
+window.uiSubmitDx = uiSubmitDx;
 window.uiOpenLeague = uiOpenLeague;
 window.uiCloseLeague = uiCloseLeague;
 window.uiCreateLeague = uiCreateLeague;

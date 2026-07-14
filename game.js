@@ -7,7 +7,7 @@
 /* ── CHAVES DE STORAGE ─────────────────────────────────────── */
 var KEY_PLAYER  = 'conduta_player_v3';
 var KEY_DAILY   = 'conduta_daily_v1';
-var KEY_SESSION = 'conduta_session_v1';
+var KEY_SESSION = 'conduta_session_v2'; // v2: motor de stages (v1 antiga é descartada)
 var KEY_ONBOARD = 'conduta_onboarded_v1';
 
 /* ── RELÓGIO BRT (UTC-3 fixo, sem horário de verão) ────────── */
@@ -151,40 +151,41 @@ function shuffled(arr) {
   return a;
 }
 
+/* ── MOTOR DE ETAPAS (stages) ──────────────────────────────── */
+/* stageIndex -1 = apresentação; 0..N-1 = stages; N = fim.       */
 function newSession(c, practice) {
   return {
     dayKey: dayKey(),
     caseId: c.id,
-    step: 0,
-    answers: [],
-    order: c.decisions.map(function (d) {
-      return shuffled(d.options.map(function (_, i) { return i; }));
-    }),
-    selected: null,
-    stepStartedAt: null,
+    stageIndex: -1,
+    stageAnswers: [],   // paralelo a stages (preenchido ao concluir)
+    order: {},          // stageIndex → ordem embaralhada (decisão)
+    selected: null,     // seleção corrente (decisão)
+    dxAttempts: [],     // tentativas da hipótese corrente
+    dxPartial: null,    // último palpite "parcial" (feedback)
+    stageStartedAt: null,
     practice: !!practice
   };
 }
+
+function saveSession() { if (session && !session.practice) saveProgress(KEY_SESSION, session); }
 
 function startCase() {
   if (playedToday()) { showSavedResult(); return; }
   var c = todaysCase();
   if (!c) { toast('Nenhum caso disponível hoje.'); return; }
-
   if (!hasOpenSession()) {
     session = newSession(c, false);
-    saveProgress(KEY_SESSION, session);
+    saveSession();
   }
   renderCase();
 }
 
-/* Modo treino: replay do caso do dia ou caso do arquivo.
-   Vive só em memória — não salva, não conta streak/percentil. */
+/* Modo treino: replay do caso do dia ou do arquivo (só em memória). */
 function startPractice(caseId) {
   var c = getCaseById(caseId);
   if (!c) { toast('Caso não encontrado.'); return; }
   session = newSession(c, true);
-  session.step = 0;
   renderCase();
 }
 
@@ -194,9 +195,60 @@ function quitCase() {
   showTab(currentTab);
 }
 
+/* entra numa etapa: reseta o estado transitório e marca o relógio */
+function enterStage(idx) {
+  session.stageIndex = idx;
+  session.selected = null;
+  session.dxPartial = null;
+  var c = getCaseById(session.caseId);
+  var stage = c.stages[idx];
+  if (!stage) { finishCase(); return; }
+  if (stage.type === 'diagnosis') session.dxAttempts = [];
+  if (stage.type === 'decision' && !session.order[idx]) {
+    session.order[idx] = shuffled(stage.options.map(function (_, i) { return i; }));
+  }
+  session.stageStartedAt = Date.now();
+  saveSession();
+  renderCase();
+}
+
+function assumeCase() { enterStage(0); }         // apresentação → 1ª etapa
+function advanceStage() { enterStage(session.stageIndex + 1); }
+
+/* diagnóstico digitado */
+function submitDiagnosis(guess) {
+  guess = (guess || '').trim();
+  if (!guess) return;
+  var c = getCaseById(session.caseId);
+  var idx = session.stageIndex;
+  var stage = c.stages[idx];
+  if (session.stageAnswers[idx]) return; // já resolvido
+
+  var res = matchDiagnosis(stage, guess);
+  if (res === 'partial') { session.dxPartial = guess; saveSession(); renderCase(); return; }
+
+  session.dxPartial = null;
+  session.dxAttempts.push(guess);
+  var max = stage.maxAttempts || 3;
+  var correct = (res === 'correct');
+  if (correct || session.dxAttempts.length >= max) {
+    session.stageAnswers[idx] = {
+      type: 'diagnosis',
+      attempts: session.dxAttempts.slice(),
+      correct: correct,
+      attemptsUsed: session.dxAttempts.length,
+      dangerousGuess: session.dxAttempts.some(function (a) { return isDangerousGuess(stage, a); }),
+      answer: correct ? guess : null,
+      ms: session.stageStartedAt ? Date.now() - session.stageStartedAt : 0
+    };
+  }
+  saveSession();
+  renderCase();
+}
+
+/* decisão de múltipla escolha */
 function selectOption(optIdx) {
   session.selected = optIdx;
-  // toggle direto no DOM — sem re-render (evita flash e não reinicia animações)
   var btns = document.querySelectorAll('#view-case .option');
   for (var i = 0; i < btns.length; i++) {
     btns[i].classList.toggle('selected', parseInt(btns[i].getAttribute('data-opt'), 10) === optIdx);
@@ -205,27 +257,19 @@ function selectOption(optIdx) {
   if (confirmBtn) confirmBtn.disabled = false;
 }
 
-function advanceStep() {
-  session.step += 1;
-  session.selected = null;
-  // entrou numa decisão → marca início do relógio (persistido: reload não zera)
-  if (session.step === 1 || session.step === 3 || session.step === 5) {
-    session.stepStartedAt = Date.now();
-  }
-  if (!session.practice) saveProgress(KEY_SESSION, session);
-  renderCase();
-}
-
 function confirmDecision() {
   if (session.selected == null) return;
-  var ms = session.stepStartedAt ? Date.now() - session.stepStartedAt : 0;
-  session.answers.push({ optionIdx: session.selected, ms: ms });
+  var idx = session.stageIndex;
+  var ms = session.stageStartedAt ? Date.now() - session.stageStartedAt : 0;
+  session.stageAnswers[idx] = { type: 'decision', optionIdx: session.selected, ms: ms };
   session.selected = null;
+  advanceStage();
+}
 
-  if (session.step >= 5) { finishCase(); return; }
-  session.step += 1; // decisão → reveal seguinte
-  if (!session.practice) saveProgress(KEY_SESSION, session);
-  renderCase();
+/* revelação (não interativa) */
+function advanceReveal() {
+  session.stageAnswers[session.stageIndex] = { type: 'reveal' };
+  advanceStage();
 }
 
 /* ── STREAK (tick só ao finalizar o caso do dia) ───────────── */
@@ -274,14 +318,16 @@ var currentResultCtx = null; // contexto do share
 function finishCase() {
   stopTimerUI();
   var c = getCaseById(session.caseId);
-  var score = computeScore(c, session.answers);
+  var score = computeScore(c, session.stageAnswers);
 
   if (session.practice) {
     var practiceEntry = {
       caseId: c.id,
-      answers: session.answers,
+      stageAnswers: session.stageAnswers,
       seals: score.seals,
       perDecision: score.perDecision,
+      dx: score.dx,
+      breakdown: score.breakdown,
       composite: score.composite,
       percentile: null
     };
@@ -296,9 +342,11 @@ function finishCase() {
 
   var entry = {
     caseId: c.id,
-    answers: session.answers,
+    stageAnswers: session.stageAnswers,
     seals: score.seals,
     perDecision: score.perDecision,
+    dx: score.dx,
+    breakdown: score.breakdown,
     composite: score.composite,
     xp: xpGained,
     percentile: null,
@@ -348,6 +396,20 @@ function showSavedResult() {
   }
 }
 
+/* monta o gabarito das decisões a partir dos stages + respostas */
+function reviewFromStages(caseData, stageAnswers) {
+  var out = [];
+  (caseData.stages || []).forEach(function (s, i) {
+    if (s.type !== 'decision') return;
+    var a = stageAnswers ? stageAnswers[i] : null;
+    var chosen = (a && typeof a.optionIdx === 'number') ? s.options[a.optionIdx] : null;
+    var best = s.options.filter(function (o) { return o.quality === 'best'; })[0];
+    var seal = chosen ? (chosen.dangerous ? 'r' : chosen.quality === 'best' ? 'g' : chosen.quality === 'acceptable' ? 'y' : 'r') : 'r';
+    out.push({ prompt: s.prompt, kind: s.kind, chosen: chosen, best: best, seal: seal });
+  });
+  return out;
+}
+
 function showResult(entry, caseData, frozeNote, opts) {
   opts = opts || {};
   var theme = THEMES[caseData.theme] || { icon: '🩺' };
@@ -356,12 +418,18 @@ function showResult(entry, caseData, frozeNote, opts) {
     dayNumber: dayNumber(),
     perDecision: entry.perDecision,
     seals: entry.seals,
+    dx: entry.dx,
     percentile: entry.percentile,
     streak: player.streak || 0
   };
   renderResult({
     caseData: caseData,
-    result: { seals: entry.seals, perDecision: entry.perDecision, answers: entry.answers },
+    result: {
+      seals: entry.seals,
+      perDecision: entry.perDecision,
+      dx: entry.dx,
+      decisions: reviewFromStages(caseData, entry.stageAnswers)
+    },
     streak: player.streak || 0,
     frozeNote: frozeNote,
     dayNumber: dayNumber(),
@@ -448,8 +516,11 @@ window.setPlayerName = setPlayerName;
 window.applyProfile = applyProfile;
 window.playedCount = playedCount;
 window.quitCase = quitCase;
+window.assumeCase = assumeCase;
+window.advanceStage = advanceStage;
+window.advanceReveal = advanceReveal;
+window.submitDiagnosis = submitDiagnosis;
 window.selectOption = selectOption;
-window.advanceStep = advanceStep;
 window.confirmDecision = confirmDecision;
 window.completeOnboarding = completeOnboarding;
 window.maybeReloadPlayerFromStorage = maybeReloadPlayerFromStorage;

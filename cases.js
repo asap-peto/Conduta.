@@ -157,20 +157,20 @@ var DAILY_CASES = [
       },
       {
         id: 'd2', kind: 'interpretation', timeTarget: 25,
-        prompt: 'Qual o distúrbio ácido-básico e a hipótese?',
+        prompt: 'Como você interpreta a gasometria?',
         options: [
-          { text: 'Acidose metabólica hiperclorêmica (ânion gap normal) — compatível com acidose tubular renal',
+          { text: 'Acidose metabólica hiperclorêmica, com ânion gap normal.',
             quality: 'best',
-            feedback: 'Perda de bicarbonato pelo túbulo gera acidose metabólica com ânion gap normal e cloro alto. Somada a raquitismo e fraqueza (hipocalemia), aponta ATR.' },
-          { text: 'Acidose metabólica — iniciar álcali e repor potássio',
+            feedback: 'pH e bicarbonato baixos, cloro alto e ânion gap calculado normal — o padrão que a perda tubular de bicarbonato produz.' },
+          { text: 'Acidose metabólica que já posso corrigir com álcali e potássio.',
             quality: 'acceptable',
-            feedback: 'A conduta de alcalinizar e repor potássio está correta, mas falta caracterizar que é uma acidose hiperclorêmica de ânion gap normal — o que define a ATR.' },
-          { text: 'Acidose metabólica com ânion gap elevado por sepse e lactato — investigar choque',
+            feedback: 'A direção terapêutica está certa, mas falta caracterizar o padrão: é uma acidose hiperclorêmica de ânion gap normal — e é isso que orienta a investigação.' },
+          { text: 'Acidose de ânion gap elevado, provavelmente por lactato ou sepse.',
             quality: 'poor',
-            feedback: 'Na ATR o ânion gap é normal (hiperclorêmica). Interpretar como acidose com ânion gap elevado leva a investigação na direção errada.' },
-          { text: 'Quadro de desidratação simples — apenas hidratar e reavaliar',
+            feedback: 'O ânion gap calculado aqui é normal (cloro alto). Lê-lo como gap elevado joga a investigação na direção errada.' },
+          { text: 'Alteração inespecífica da desidratação; basta reidratar e reavaliar.',
             quality: 'poor',
-            feedback: 'Chamar de desidratação simples ignora a doença tubular de base: sem tratá-la, a acidose, a hipocalemia e o raquitismo persistem.' }
+            feedback: 'Acidose com cloro alto e potássio baixo aponta doença tubular — o distúrbio não desaparece só com hidratação.' }
         ]
       },
       {
@@ -327,20 +327,20 @@ var DAILY_CASES = [
       },
       {
         id: 'd2', kind: 'interpretation', timeTarget: 25,
-        prompt: 'Qual a principal hipótese diagnóstica?',
+        prompt: 'O ultrassom veio sem alterações. O que isso muda?',
         options: [
-          { text: 'Endometriose — dor cíclica progressiva, dispareunia profunda e dor à mobilização do colo',
+          { text: 'Ultrassom normal não afasta a hipótese; mantenho a conduta guiada pela clínica.',
             quality: 'best',
-            feedback: 'A tríade dismenorreia progressiva, dispareunia de profundidade e dor à mobilização do colo em útero de volume normal é clássica de endometriose.' },
-          { text: 'Dor pélvica crônica de provável origem endometriótica — investigar e tratar',
+            feedback: 'A imagem pode ser normal, sobretudo nas formas iniciais e sem endometrioma. A hipótese é clínica — um exame negativo não a derruba.' },
+          { text: 'Solicito ressonância pélvica antes de definir qualquer tratamento.',
             quality: 'acceptable',
-            feedback: 'A direção está certa; falta apenas nomear a hipótese específica (endometriose), que orienta a terapêutica de primeira linha.' },
-          { text: 'Doença inflamatória pélvica — iniciar antibioticoterapia',
+            feedback: 'A RM ajuda a mapear doença profunda em casos selecionados, mas não é obrigatória para iniciar o tratamento — o exame normal já não muda a hipótese.' },
+          { text: 'O exame normal torna o quadro improvável; reconsidero dor de origem funcional.',
             quality: 'poor',
-            feedback: 'A ausência de sinais infecciosos agudos e o padrão cíclico tornam DIP improvável; antibiótico não trata a causa.' },
-          { text: 'Miomatose uterina — programar miomectomia',
-            quality: 'poor',
-            feedback: 'O útero é de volume normal, sem massa palpável; a hipótese de mioma não explica a dor cíclica e a dispareunia profunda.' }
+            feedback: 'Abandonar a hipótese por um ultrassom negativo é o erro clássico aqui — a imagem normal não exclui a doença.' },
+          { text: 'Peço CA-125 para confirmar o diagnóstico antes de conduzir.',
+            quality: 'poor', redundant: true,
+            feedback: 'O CA-125 tem baixa acurácia e não confirma nem exclui o quadro; não muda a conduta e só atrasa.' }
         ]
       },
       {
@@ -497,20 +497,20 @@ var DAILY_CASES = [
       },
       {
         id: 'd2', kind: 'interpretation', timeTarget: 22,
-        prompt: 'Qual a hipótese diagnóstica mais provável?',
+        prompt: 'A ausência de febre e de rigidez generalizada afasta principalmente o quê?',
         options: [
-          { text: 'Distonia aguda induzida por antipsicótico (reação extrapiramidal precoce)',
+          { text: 'Síndrome neuroléptica maligna — sem febre alta, rigidez difusa e disautonomia, fica improvável.',
             quality: 'best',
-            feedback: 'Início poucos dias após a troca por haloperidol, com torcicolo e contratura — o padrão clássico da distonia aguda por bloqueadores dopaminérgicos.' },
-          { text: 'Reação extrapiramidal aguda ao haloperidol',
+            feedback: 'A SNM é o diferencial que mata: febre alta, rigidez em cano de chumbo e instabilidade autonômica a caracterizam — todas ausentes aqui.' },
+          { text: 'Uma reação grave ao antipsicótico, o que tranquiliza quanto ao risco imediato.',
             quality: 'acceptable',
-            feedback: 'Correto de forma genérica; nomear especificamente a distonia aguda direciona melhor a conduta (anticolinérgico).' },
-          { text: 'Discinesia tardia',
+            feedback: 'Certo em afastar gravidade sistêmica, mas o ponto-chave é nomear que os achados descartam a síndrome neuroléptica maligna.' },
+          { text: 'Uma crise convulsiva focal — solicitar EEG de urgência.',
             quality: 'poor',
-            feedback: 'A discinesia tardia surge após uso prolongado (meses a anos) e é hipercinética — não corresponde a um quadro agudo dias após a troca.' },
-          { text: 'Acatisia',
+            feedback: 'Contratura sustentada com consciência preservada não é crise convulsiva; EEG de rotina só atrasa o alívio.' },
+          { text: 'Tétano — iniciar imunoglobulina e isolamento sensorial.',
             quality: 'poor',
-            feedback: 'A acatisia é a inquietação motora com necessidade de se mover, não a contratura muscular sustentada descrita aqui.' }
+            feedback: 'Sem porta de entrada nem trismo/disfagia progressivos, e com relação temporal ao haloperidol, o tétano é improvável.' }
         ]
       },
       {
@@ -667,20 +667,20 @@ var DAILY_CASES = [
       },
       {
         id: 'd2', kind: 'interpretation', timeTarget: 22,
-        prompt: 'Qual o diagnóstico?',
+        prompt: 'Os sinais de gravidade mudam a urgência. Como você os lê?',
         options: [
-          { text: 'Choque séptico — sepse com disfunção cardiovascular (hipotensão e hipoperfusão, com lactato elevado)',
+          { text: 'Há hipoperfusão — trato com urgência de choque, sem esperar novos exames.',
             quality: 'best',
-            feedback: 'Infecção com disfunção orgânica e sinais de hipoperfusão (hipotensão para a idade, lactato aumentado e acidose) caracteriza choque séptico, não apenas sepse.' },
-          { text: 'Sepse evoluindo para choque — manter a ressuscitação',
+            feedback: 'Hipotensão para a idade, lactato elevado e acidose são hipoperfusão: a resposta é reanimação imediata e escalonamento, não observação.' },
+          { text: 'Quadro grave que exige manter a ressuscitação e reavaliar de perto.',
             quality: 'acceptable',
-            feedback: 'A leitura de gravidade está certa; o dado que define o choque séptico é a disfunção cardiovascular com hipoperfusão já presente.' },
-          { text: 'Síndrome da resposta inflamatória sistêmica sem infecção definida — apenas observar',
+            feedback: 'A leitura de gravidade está certa; o ponto é reconhecer que já há disfunção cardiovascular e agir com a urgência de um choque.' },
+          { text: 'Ainda é possível aguardar culturas e imagem antes de escalonar.',
             quality: 'poor',
-            feedback: 'Há foco infeccioso e disfunção orgânica com hipoperfusão — chamar de SIRS sem infecção e observar subestima um choque séptico.' },
-          { text: 'Pneumonia comunitária simples — antibiótico oral e alta',
+            feedback: 'Esperar exames diante de hipoperfusão atrasa o que decide o desfecho — aqui o tempo é crítico.' },
+          { text: 'Provável reação febril da própria quimioterapia; manter observação.',
             quality: 'poor',
-            feedback: 'Em paciente neutropênico com hipotensão, lactato e acidose, tratar como pneumonia simples com alta é perigoso — trata-se de choque séptico.' }
+            feedback: 'Hipotensão, lactato e acidose em paciente imunossuprimido não são "reação da quimio" — subestimar isso é o erro grave.' }
         ]
       },
       {
@@ -734,9 +734,90 @@ var DAILY_QUEUE = [
   'infecto-choque-septico-neutropenico'
 ];
 
+/* ── DIAGNÓSTICO DIGITADO (por caso) ──────────────────────────
+   Dados da etapa de hipótese. Correção editorial: canonical +
+   acceptedAnswers (aceitos), partialAnswers (reconhece mas pede
+   especificar) e pistas progressivas. Casos sem entrada aqui não
+   têm etapa de diagnóstico (ex.: prevenção pós-IAM, cujo dx já
+   vem na vinheta). */
+var DX_BY_CASE = {
+  'cardio-icfer-gdmt': {
+    canonical: 'insuficiência cardíaca com fração de ejeção reduzida',
+    acceptedAnswers: ['icfer', 'ic fer', 'insuficiência cardíaca sistólica', 'ic sistólica', 'ic com fração de ejeção reduzida', 'insuficiência cardíaca com fe reduzida'],
+    partialAnswers: ['insuficiência cardíaca', 'ic'],
+    hints: ['Pense em uma síndrome cardíaca estrutural.', 'A fração de ejeção vai classificar o quadro.']
+  },
+  'ped-atr-lactente': {
+    canonical: 'acidose tubular renal',
+    acceptedAnswers: ['atr', 'acidose tubular renal distal', 'atr distal', 'atr tipo 1'],
+    partialAnswers: ['acidose metabólica'],
+    hints: ['Lactente com acidose, potássio baixo e crescimento ruim.', 'Um raquitismo que não melhora com vitamina D aponta para a origem renal.']
+  },
+  'trauma-tce-queda': {
+    canonical: 'traumatismo cranioencefálico',
+    acceptedAnswers: ['tce', 'trauma cranioencefálico', 'traumatismo craniano'],
+    partialAnswers: ['trauma'],
+    hints: ['Mecanismo de alto risco com rebaixamento.', 'Amnésia do evento é um achado importante.']
+  },
+  'go-endometriose': {
+    canonical: 'endometriose',
+    acceptedAnswers: ['endometriose pélvica'],
+    partialAnswers: ['dor pélvica crônica'],
+    dangerousAnswers: [],
+    hints: ['Pense numa dor pélvica com padrão cíclico, ligada ao ciclo menstrual.', 'A dispareunia profunda e a dor à mobilização do colo sugerem tecido endometrial fora do útero.']
+  },
+  'psiq-distonia-aguda': {
+    canonical: 'distonia aguda',
+    acceptedAnswers: ['reação distônica aguda', 'distonia', 'reação extrapiramidal aguda'],
+    partialAnswers: ['reação extrapiramidal'],
+    hints: ['Efeito do antipsicótico, poucos dias após a troca.', 'Torcicolo com desvio do olhar (crise oculógira).']
+  },
+  'reumato-artrite-reumatoide': {
+    canonical: 'artrite reumatoide',
+    acceptedAnswers: ['ar', 'poliartrite reumatoide'],
+    partialAnswers: ['artrite', 'poliartrite'],
+    hints: ['Poliartrite simétrica com rigidez matinal prolongada.', 'Acomete pequenas articulações das mãos.']
+  },
+  'infecto-choque-septico-neutropenico': {
+    canonical: 'choque séptico',
+    acceptedAnswers: ['sepse com choque', 'choque septico'],
+    partialAnswers: ['sepse', 'sepse grave'],
+    hints: ['Neutropenia febril com hipotensão e lactato alto.', 'Sepse com disfunção cardiovascular.']
+  }
+};
+
+/* Converte o formato {decisions, reveals} em stages[] genérico.
+   Ordem: diagnóstico → d1 → reveal0 → d2 → reveal1 → d3. */
+function toStages(c) {
+  if (c.stages) return c.stages;
+  var stages = [];
+  var dx = DX_BY_CASE[c.id];
+  if (dx) {
+    var d = { type: 'diagnosis', maxAttempts: 3 };
+    for (var k in dx) if (dx.hasOwnProperty(k)) d[k] = dx[k];
+    stages.push(d);
+  }
+  var reveals = c.reveals || [];
+  (c.decisions || []).forEach(function (dec, i) {
+    var st = { type: 'decision' };
+    for (var kk in dec) if (dec.hasOwnProperty(kk)) st[kk] = dec[kk];
+    stages.push(st);
+    if (reveals[i]) {
+      var rv = { type: 'reveal' };
+      for (var rk in reveals[i]) if (reveals[i].hasOwnProperty(rk)) rv[rk] = reveals[i][rk];
+      stages.push(rv);
+    }
+  });
+  return stages;
+}
+
 function getCaseById(id) {
   for (var i = 0; i < DAILY_CASES.length; i++) {
-    if (DAILY_CASES[i].id === id) return DAILY_CASES[i];
+    if (DAILY_CASES[i].id === id) {
+      var c = DAILY_CASES[i];
+      if (!c.stages) c.stages = toStages(c); // converte 1x e cacheia no objeto
+      return c;
+    }
   }
   return null;
 }
@@ -749,5 +830,7 @@ function activeQueue() {
 window.THEMES = THEMES;
 window.DAILY_CASES = DAILY_CASES;
 window.DAILY_QUEUE = DAILY_QUEUE;
+window.DX_BY_CASE = DX_BY_CASE;
+window.toStages = toStages;
 window.getCaseById = getCaseById;
 window.activeQueue = activeQueue;
